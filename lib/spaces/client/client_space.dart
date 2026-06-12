@@ -25,6 +25,62 @@ class _ClientSpaceState extends State<ClientSpace> {
     _ordersFuture = _apiService.getTestOrders();
   }
 
+  Future<void> _onApproveOrder(int id) async {
+    try {
+      final success = await _apiService.approveOrder(id);
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Livraison approuvée avec succès !'), backgroundColor: Colors.green),
+          );
+          setState(() {
+            _ordersFuture = _apiService.getTestOrders();
+          });
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Erreur lors de l'approbation de la livraison."), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _onRejectOrder(int id, String reason) async {
+    try {
+      final success = await _apiService.rejectOrder(id, reason);
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Livraison refusée avec succès.'), backgroundColor: Colors.orange),
+          );
+          setState(() {
+            _ordersFuture = _apiService.getTestOrders();
+          });
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Erreur lors du refus de la livraison.'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   void _onNavTapped(int index) {
     setState(() {
       _currentNavIndex = index;
@@ -94,7 +150,11 @@ final OrderDTO? trackingOrder = allOrders.firstWhere(
             return IndexedStack(
   index: _currentNavIndex,
   children: [
-    HomeTabPage(activeOrders: todayOrders),                   // Affiche les commandes du jour
+    HomeTabPage(
+      activeOrders: todayOrders,
+      onApprove: _onApproveOrder,
+      onReject: _onRejectOrder,
+    ),
     HistoriqueCommandesPage(history: historyOrders),          // Historique vide si aucune commande n'est livrée/passée
     SuiviMapPage(activeOrder: trackingOrder),
     const ProfilClientPage(),
@@ -122,37 +182,71 @@ class CustomBottomNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        margin: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: const Color(0xFF0F172A),
           borderRadius: BorderRadius.circular(40),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0F172A).withOpacity(0.25),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            )
+          ]
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildNavItem(Icons.home_outlined, 0),
-            _buildNavItem(Icons.local_shipping_outlined, 1),
-            _buildNavItem(Icons.map_outlined, 2),
-            _buildNavItem(Icons.person_outline, 3),
+            _buildNavItem(icon: Icons.home_rounded, index: 0, label: 'Home'),
+            _buildNavItem(icon: Icons.history_rounded, index: 1, label: 'History'),
+            _buildNavItem(icon: Icons.map_rounded, index: 2, label: 'Map'),
+            _buildNavItem(icon: Icons.person_rounded, index: 3, label: 'Profile'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(IconData icon, int index) {
+  Widget _buildNavItem({required IconData icon, required int index, required String label}) {
     final isSelected = currentIndex == index;
+    
     return GestureDetector(
       onTap: () => onTap(index),
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? Colors.white.withOpacity(0.08) : Colors.transparent,
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? Colors.white.withOpacity(0.12) : Colors.transparent,
+            width: 1,
+          ),
         ),
-        child: Icon(icon, color: isSelected ? Colors.black : Colors.white70, size: 26),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : Colors.white60,
+              size: 24,
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

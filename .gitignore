@@ -46,17 +46,17 @@ app.*.map.json
 
 
 
- lib/core/
+lib/core/
 lib/models/
 lib/spaces/client/adresses_page.dart
-        # lib/spaces/client/client_api_service.dart
+# lib/spaces/client/client_api_service.dart
 lib/spaces/client/details_commande_page.dart
-        # lib/spaces/client/historique_commandes.dart
-        lib/spaces/client/home_page.dart
-        # lib/spaces/client/home_tab_page.dart
-        lib/spaces/client/informations_personnelles.dart
-        # lib/spaces/client/order_dto.dart
-        lib/spaces/client/paiement_page .dart
-        # lib/spaces/client/profil_client_page.dart
-        # lib/spaces/client/suivi_map_page.dart
-        #   modified:   lib/spaces/client/client_space.dart
+# lib/spaces/client/historique_commandes.dart
+lib/spaces/client/home_page.dart
+# lib/spaces/client/home_tab_page.dart
+lib/spaces/client/informations_personnelles.dart
+# lib/spaces/client/order_dto.dart
+lib/spaces/client/paiement_page .dart
+# lib/spaces/client/profil_client_page.dart
+# lib/spaces/client/suivi_map_page.dart
+#   modified:   lib/spaces/client/client_space.dart

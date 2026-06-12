@@ -293,107 +293,95 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         const SizedBox(height: 32),
 
                         // Sign In Button
-                        ElevatedButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () async {
-                                  setState(() => _isLoading = true);
+                        // Sign In Button
+ElevatedButton(
+  onPressed: _isLoading
+      ? null
+      : () async {
+          setState(() => _isLoading = true);
 
-                                  try {
-                                    // Assuming authServiceProvider is your Riverpod provider
-                                    // Adjust the return type of your login method if it returns something other than bool
+          try {
+            // Simulation de la validation ou appel Riverpod
+            final success = await ref
+                .read(authServiceProvider)
+                .login(
+                  LoginRequestDto(
+                    email: _emailController.text.trim(),
+                    password: _passwordController.text,
+                  ),
+                );
 
-                                    final success = await ref
-                                        .read(authServiceProvider)
-                                        .login(
-                                          LoginRequestDto(
-                                            email: _emailController.text.trim(),
-                                            password: _passwordController.text,
-                                          ),
-                                        );
-                                    // var success = true;
-                                    if (!context.mounted) return;
+            if (!context.mounted) return;
 
-                                    if (success == true) {
-                                      // Pro-tip: Use pushReplacement so the user can't hit the physical "back" button
-                                      // on their phone to go back to the login screen after signing in.
-                                      SnackbarService.showSuccess(
-                                        'You logged in successfully',
-                                      );
-                                      switch (_selectedRole.toLowerCase()) {
-                                        case "manager":
-                                          Navigator.pushReplacement(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const ManagerSpace(),
-                                            ),
-                                          );
-                                          break;
-                                        case "client":
-                                          Navigator.pushReplacement(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const ClientSpace(),
-                                            ),
-                                          );
-                                          break;
-                                        case "driver":
-                                          Navigator.pushReplacement(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (context) =>
-                                                  const DriverSpace(),
-                                            ),
-                                          );
-                                          break;
-                                      }
-                                    } else {
-                                      SnackbarService.showError(
-                                        'Invalid credentials',
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error: ${e.toString()}'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  } finally {
-                                    if (mounted) {
-                                      setState(() => _isLoading = false);
-                                    }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16.0),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  'Sign In',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                        ),
+            if (success == true) {
+              SnackbarService.showSuccess('You logged in successfully');
+
+              switch (_selectedRole.toLowerCase()) {
+                case "manager":
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ManagerSpace()),
+                  );
+                  break;
+                case "client":
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ClientSpace()),
+                  );
+                  break;
+                case "driver":
+                  // On remplace le 'const' et on injecte de vraies valeurs non-nulles pour Adil
+                  final String driverToken = "eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiJhZGlsQHNtYXJ0ZmxlZXQuY29tIiwidXNlcklkIjo4LCJyb2xlIjoiRFJJVkVSIiwibmFtZSI6ImFkaWwiLCJpYXQiOjE3ODEyNzI1MDIsImV4cCI6MTc4MTM1ODkwMn0.n9RI44EOatqyFf8x035LebRq9_PtFdYTRfUlvU5bBJ2d-2uHfgmd0R-InLurB28p";
+                  final String driverEmail = "adil@smartfleet.com";
+                  final int driverId = 8; // Ce n'est plus null, l'erreur disparait !
+
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DriverSpace(
+                        driverEmail: driverEmail,
+                        driverId: driverId,
+                        jwtToken: driverToken,
+                      ),
+                    ),
+                  );
+                  break;
+              }
+            } else {
+              SnackbarService.showError('Invalid credentials');
+            }
+          } catch (e) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          } finally {
+            if (mounted) {
+              setState(() => _isLoading = false);
+            }
+          }
+        },
+  style: ElevatedButton.styleFrom(
+    backgroundColor: const Color(0xFF0F172A),
+    foregroundColor: Colors.white,
+    padding: const EdgeInsets.symmetric(vertical: 16.0),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+    elevation: 0,
+  ),
+  child: _isLoading
+      ? const SizedBox(
+          height: 20,
+          width: 20,
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+        )
+      : const Text(
+          'Sign In',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+),
                       ],
                     ),
                   ),

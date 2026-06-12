@@ -1,16 +1,28 @@
+// Dans lib/spaces/driver/driver_space.dart
 import 'package:flutter/material.dart';
-import 'package:smartfleet_frontend/spaces/driver/home_page.dart';
+import 'home_page.dart';
 
-class DriverSpace extends StatefulWidget {
-  const DriverSpace({super.key});
+class DriverSpace extends StatelessWidget {
+  final String driverEmail;
+  final int driverId;
+  final String jwtToken; // <-- Doit être récupéré ici
 
-  @override
-  State<DriverSpace> createState() => _DriverSpaceState();
-}
+  const DriverSpace({
+    super.key, 
+    required this.driverEmail, 
+    required this.driverId,
+    required this.jwtToken, // <-- Déclaration requise
+  });
 
-class _DriverSpaceState extends State<DriverSpace> {
   @override
   Widget build(BuildContext context) {
-  return Scaffold(body: HomePage());
+    // Transmission du jeton vers la HomePage
+    return Scaffold(
+      body: HomePage(
+        driverEmail: driverEmail,
+        driverId: driverId,
+        jwtToken: jwtToken, // <-- Correction : Passer le token
+      ),
+    );
   }
 }

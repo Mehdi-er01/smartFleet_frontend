@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:smartfleet_frontend/spaces/manager/dispatch_creation_page.dart';
+import 'package:smartfleet_frontend/spaces/manager/map_page.dart';
+import 'package:smartfleet_frontend/spaces/manager/ressources_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -13,9 +16,10 @@ class _HomePageState extends State<HomePage> {
   // The Manager's Page Views
   final List<Widget> _pages = const [
     ManagerDashboardView(), // The redesigned dashboard
-    Center(child: Text("Fleet Inventory")),
-    Center(child: Text("Global Map")),
-    Center(child: Text("Manager Settings")),
+    DispatchCreationPage(),
+    MapPage(),
+    ResourcesPage(),
+
   ];
 
   @override
@@ -290,9 +294,9 @@ class CustomBottomNavBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _navItem(Icons.grid_view_rounded, 0),
-            _navItem(Icons.inventory_2_outlined, 1),
+            _navItem(Icons.assignment, 1),
             _navItem(Icons.map_outlined, 2),
-            _navItem(Icons.settings_outlined, 3),
+            _navItem(Icons.cases_rounded, 3),
           ],
         ),
       ),

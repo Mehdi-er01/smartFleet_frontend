@@ -1,25 +1,44 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+// Ensure these paths match your actual project structure
+import 'package:smartfleet_frontend/dto/login_request_dto.dart';
+import 'package:smartfleet_frontend/register_page.dart';
+import 'package:smartfleet_frontend/service/auth_service.dart';
+import 'package:smartfleet_frontend/service/snackbar_service.dart';
 import 'package:smartfleet_frontend/spaces/client/client_space.dart';
 import 'package:smartfleet_frontend/spaces/driver/driver_space.dart';
 import 'package:smartfleet_frontend/spaces/manager/manager_space.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
- String _selectedRole = 'Manager';
+class _LoginPageState extends ConsumerState<LoginPage> {
+  String _selectedRole = 'Manager';
   bool _isPasswordObscured = true;
+  bool _isLoading =
+      false; // Added to prevent double-submissions and show spinner
 
-  
+  // 1. Initialize controllers
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  // 2. ALWAYS dispose controllers to prevent memory leaks
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       // Light background to make the white card pop out
-      backgroundColor: const Color(0xFFF3F4F6), 
+      backgroundColor: const Color(0xFFF3F4F6),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
@@ -50,7 +69,11 @@ class _LoginPageState extends State<LoginPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Icon(Icons.local_shipping_outlined, size: 28, color: Color(0xFF0F172A)),
+                            Icon(
+                              Icons.local_shipping_outlined,
+                              size: 28,
+                              color: Color(0xFF0F172A),
+                            ),
                             SizedBox(width: 8),
                             Text(
                               'SmartFleet',
@@ -101,9 +124,13 @@ class _LoginPageState extends State<LoginPage> {
                         // Divider
                         Row(
                           children: [
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                              child: Divider(color: Colors.grey.shade300),
+                            ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16.0,
+                              ),
                               child: Text(
                                 'OR',
                                 style: TextStyle(
@@ -113,7 +140,9 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               ),
                             ),
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Expanded(
+                              child: Divider(color: Colors.grey.shade300),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 24),
@@ -137,6 +166,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           child: Row(
                             children: [
+                              // Added Admin to match your register page, if needed, otherwise keep these three
                               _buildRoleTab('Manager'),
                               _buildRoleTab('Driver'),
                               _buildRoleTab('Client'),
@@ -156,22 +186,32 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
+                          controller: _emailController, // Bind controller
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
                             hintText: 'name@smartfleet.com',
                             hintStyle: TextStyle(color: Colors.grey.shade500),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: const BorderSide(color: Color(0xFF0F172A)),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                           ),
                         ),
@@ -209,25 +249,37 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
+                          controller: _passwordController, // Bind controller
                           obscureText: _isPasswordObscured,
                           obscuringCharacter: '•',
                           decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
-                              borderSide: const BorderSide(color: Color(0xFF0F172A)),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF0F172A),
+                              ),
                             ),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _isPasswordObscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                _isPasswordObscured
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
                                 color: Colors.grey.shade600,
                               ),
                               onPressed: () {
@@ -242,20 +294,80 @@ class _LoginPageState extends State<LoginPage> {
 
                         // Sign In Button
                         ElevatedButton(
-                          onPressed: () {
-                            switch (_selectedRole.toLowerCase()) {
-                              case "manager":
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => ManagerSpace()));
-                                break;
-                              case "client":
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => ClientSpace()));
-                                break; 
-                              case "driver":
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => DriverSpace()));
-                                break;
-                            }
+                          onPressed: _isLoading
+                              ? null
+                              : () async {
+                                  setState(() => _isLoading = true);
 
-                          },
+                                  try {
+                                    // Assuming authServiceProvider is your Riverpod provider
+                                    // Adjust the return type of your login method if it returns something other than bool
+
+                                    final success = await ref
+                                        .read(authServiceProvider)
+                                        .login(
+                                          LoginRequestDto(
+                                            email: _emailController.text.trim(),
+                                            password: _passwordController.text,
+                                          ),
+                                        );
+                                    // var success = true;
+                                    if (!context.mounted) return;
+
+                                    if (success == true) {
+                                      // Pro-tip: Use pushReplacement so the user can't hit the physical "back" button
+                                      // on their phone to go back to the login screen after signing in.
+                                      SnackbarService.showSuccess(
+                                        'You logged in successfully',
+                                      );
+                                      switch (_selectedRole.toLowerCase()) {
+                                        case "manager":
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const ManagerSpace(),
+                                            ),
+                                          );
+                                          break;
+                                        case "client":
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const ClientSpace(),
+                                            ),
+                                          );
+                                          break;
+                                        case "driver":
+                                          Navigator.pushReplacement(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const DriverSpace(),
+                                            ),
+                                          );
+                                          break;
+                                      }
+                                    } else {
+                                      SnackbarService.showError(
+                                        'Invalid credentials',
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: ${e.toString()}'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() => _isLoading = false);
+                                    }
+                                  }
+                                },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0F172A),
                             foregroundColor: Colors.white,
@@ -265,13 +377,22 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             elevation: 0,
                           ),
-                          child: const Text(
-                            'Sign In',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                         ),
                       ],
                     ),
@@ -283,18 +404,32 @@ class _LoginPageState extends State<LoginPage> {
                     padding: const EdgeInsets.symmetric(vertical: 24.0),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12.0)),
-                      border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                      borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(12.0),
+                      ),
+                      border: Border(
+                        top: BorderSide(color: Colors.grey.shade200),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           "Don't have an account? ",
-                          style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 14,
+                          ),
                         ),
                         GestureDetector(
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const RegisterPage(),
+                              ),
+                            );
+                          },
                           child: const Text(
                             'Create account',
                             style: TextStyle(
@@ -317,15 +452,17 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // Helper widget for Social Buttons
-  Widget _buildSocialButton({required Widget icon, required String label, required VoidCallback onTap}) {
+  Widget _buildSocialButton({
+    required Widget icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return OutlinedButton(
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14.0),
         side: BorderSide(color: Colors.grey.shade300),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8.0),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
@@ -368,7 +505,7 @@ class _LoginPageState extends State<LoginPage> {
                       color: Colors.black.withOpacity(0.04),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
-                    )
+                    ),
                   ]
                 : [],
           ),
@@ -378,7 +515,9 @@ class _LoginPageState extends State<LoginPage> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? const Color(0xFF0F172A) : Colors.grey.shade600,
+              color: isSelected
+                  ? const Color(0xFF0F172A)
+                  : Colors.grey.shade600,
             ),
           ),
         ),

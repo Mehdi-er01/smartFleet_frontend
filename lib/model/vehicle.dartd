@@ -1,0 +1,96 @@
+// TODO: Ensure you have your related model files created and imported
+// import 'manager.dart';
+// import 'driver.dart';
+
+class Vehicle {
+  final int? id;
+  final String registrationNumber;
+  final String brand;
+  final String model;
+  final int year;
+  final double maxVolumeM2;
+  final double maxPayloadKg;
+  final double currentLoadM2;
+  final double currentLoadKg;
+  final bool active;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  
+  // Relational data (nullable because they might not always be fetched/included in JSON)
+  final Manager? manager;
+  final List<Driver>? assignedDrivers;
+
+  Vehicle({
+    this.id,
+    required this.registrationNumber,
+    required this.brand,
+    required this.model,
+    required this.year,
+    required this.maxVolumeM2,
+    required this.maxPayloadKg,
+    this.currentLoadM2 = 0.0,
+    this.currentLoadKg = 0.0,
+    this.active = true,
+    this.createdAt,
+    this.updatedAt,
+    this.manager,
+    this.assignedDrivers,
+  });
+
+  /// Creates a [Vehicle] instance from a JSON map.
+  factory Vehicle.fromJson(Map<String, dynamic> json) {
+    return Vehicle(
+      id: json['id'] as int?,
+      registrationNumber: json['registrationNumber'] ?? json['registration_number'] ?? '',
+      brand: json['brand'] ?? '',
+      model: json['model'] ?? '',
+      year: json['year'] as int? ?? 0,
+      
+      // Using 'as num' before .toDouble() safely handles both ints (e.g., 0) and doubles (e.g., 0.0) from JSON
+      maxVolumeM2: (json['maxVolumeM2'] ?? json['max_volume_m2'] ?? 0).toDouble(),
+      maxPayloadKg: (json['maxPayloadKg'] ?? json['max_payload_kg'] ?? 0).toDouble(),
+      currentLoadM2: (json['currentLoadM2'] ?? json['current_load_m2'] ?? 0).toDouble(),
+      currentLoadKg: (json['currentLoadKg'] ?? json['current_load_kg'] ?? 0).toDouble(),
+      
+      active: json['active'] as bool? ?? true,
+      
+      // Handle Date Parsing safely
+      createdAt: (json['createdAt'] ?? json['created_at']) != null 
+          ? DateTime.tryParse(json['createdAt'] ?? json['created_at']) 
+          : null,
+      updatedAt: (json['updatedAt'] ?? json['updated_at']) != null 
+          ? DateTime.tryParse(json['updatedAt'] ?? json['updated_at']) 
+          : null,
+          
+      // Parse related models if they exist in the payload
+      manager: json['manager'] != null 
+          ? Manager.fromJson(json['manager']) 
+          : null,
+      assignedDrivers: json['assignedDrivers'] != null 
+          ? (json['assignedDrivers'] as List).map((i) => Driver.fromJson(i)).toList() 
+          : null,
+    );
+  }
+
+  /// Converts a [Vehicle] instance to a JSON map.
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'registrationNumber': registrationNumber,
+      'brand': brand,
+      'model': model,
+      'year': year,
+      'maxVolumeM2': maxVolumeM2,
+      'maxPayloadKg': maxPayloadKg,
+      'currentLoadM2': currentLoadM2,
+      'currentLoadKg': currentLoadKg,
+      'active': active,
+      'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+      
+      // Optionally handle serialization of related entities depending on your API needs
+      'manager': manager?.toJson(),
+      'assignedDrivers': assignedDrivers?.map((e) => e.toJson()).toList(),
+    };
+  }
+}

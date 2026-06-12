@@ -15,7 +15,7 @@ class RegisterPage extends ConsumerStatefulWidget {
 }
 
 class _RegisterPageState extends ConsumerState<RegisterPage> {
-  String _selectedRole = 'Admin';
+  final String _selectedRole = 'Client';
   bool _isPasswordObscured = true;
   bool _isLoading = false;
 
@@ -134,33 +134,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Access Role Selector
-                        const Text(
-                          'Access Role',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(4.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8.0),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: Row(
-                            children: [
-                              _buildRoleTab('Admin'),
-                              _buildRoleTab('Manager'),
-                              _buildRoleTab('Driver'),
-                              _buildRoleTab('Client'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 32),
+
 
                         // --- ALWAYS SHOW: Personal Details ---
                         _buildSectionHeader('Personal Details'),
@@ -443,44 +417,5 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     );
   }
 
-  Widget _buildRoleTab(String role) {
-    bool isSelected = _selectedRole == role;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          // Setting the state here triggers a rebuild.
-          // Because of our conditional logic in the build method,
-          // the appropriate text fields will instantly appear or disappear!
-          setState(() {
-            _selectedRole = role;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12.0),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(6.0),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    )
-                  ]
-                : [],
-          ),
-          child: Text(
-            role,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? const Color(0xFF0F172A) : Colors.grey.shade600,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
 }

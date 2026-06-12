@@ -5,6 +5,7 @@ import 'package:smartfleet_frontend/dto/login_request_dto.dart';
 import 'package:smartfleet_frontend/register_page.dart';
 import 'package:smartfleet_frontend/service/auth_service.dart';
 import 'package:smartfleet_frontend/service/snackbar_service.dart';
+import 'package:smartfleet_frontend/dto/user_dto.dart';
 import 'package:smartfleet_frontend/spaces/client/client_space.dart';
 import 'package:smartfleet_frontend/spaces/driver/driver_space.dart';
 import 'package:smartfleet_frontend/spaces/manager/manager_space.dart';
@@ -17,7 +18,6 @@ class LoginPage extends ConsumerStatefulWidget {
 }
 
 class _LoginPageState extends ConsumerState<LoginPage> {
-  String _selectedRole = 'Manager';
   bool _isPasswordObscured = true;
   bool _isLoading =
       false; // Added to prevent double-submissions and show spinner
@@ -147,33 +147,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Access Role Selector
-                        const Text(
-                          'Access Role',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(4.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8.0),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: Row(
-                            children: [
-                              // Added Admin to match your register page, if needed, otherwise keep these three
-                              _buildRoleTab('Manager'),
-                              _buildRoleTab('Driver'),
-                              _buildRoleTab('Client'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
+
 
                         // Email Field
                         const Text(
@@ -303,7 +277,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     // Assuming authServiceProvider is your Riverpod provider
                                     // Adjust the return type of your login method if it returns something other than bool
 
-                                    final success = await ref
+                                    final user = await ref
                                         .read(authServiceProvider)
                                         .login(
                                           LoginRequestDto(
@@ -314,14 +288,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     // var success = true;
                                     if (!context.mounted) return;
 
-                                    if (success == true) {
+                                    if (user != null) {
                                       // Pro-tip: Use pushReplacement so the user can't hit the physical "back" button
                                       // on their phone to go back to the login screen after signing in.
                                       SnackbarService.showSuccess(
                                         'You logged in successfully',
                                       );
-                                      switch (_selectedRole.toLowerCase()) {
-                                        case "manager":
+                                      switch (user.role) {
+                                        case UserRole.MANAGER:
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
@@ -330,7 +304,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                             ),
                                           );
                                           break;
-                                        case "client":
+                                        case UserRole.CLIENT:
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
@@ -339,13 +313,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                             ),
                                           );
                                           break;
-                                        case "driver":
+                                        case UserRole.DRIVER:
                                           Navigator.pushReplacement(
                                             context,
                                             MaterialPageRoute(
                                               builder: (context) =>
                                                   const DriverSpace(),
                                             ),
+                                          );
+                                          break;
+                                        default:
+                                          SnackbarService.showError(
+                                            'Access denied: Unauthorized role.',
                                           );
                                           break;
                                       }
@@ -484,46 +463,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 
-  // Helper widget for the custom Segmented Control (Tabs)
-  Widget _buildRoleTab(String role) {
-    bool isSelected = _selectedRole == role;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedRole = role;
-          });
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12.0),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(6.0),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : [],
-          ),
-          child: Text(
-            role,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected
-                  ? const Color(0xFF0F172A)
-                  : Colors.grey.shade600,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   // A simple widget to mimic the Google logo using standard containers
   Widget _buildGoogleIcon() {

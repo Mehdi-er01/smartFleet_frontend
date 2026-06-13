@@ -20,6 +20,24 @@ class ClientRepository {
       throw Exception('Error fetching client orders: $e');
     }
   }
+
+  Future<bool> approveOrder(int id) async {
+    try {
+      final response = await _apiClient.post('/orders/$id/approve', {});
+      return response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300;
+    } catch (e) {
+      throw Exception('Error approving order: $e');
+    }
+  }
+
+  Future<bool> rejectOrder(int id, String reason) async {
+    try {
+      final response = await _apiClient.post('/orders/$id/reject', {'reason': reason});
+      return response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300;
+    } catch (e) {
+      throw Exception('Error rejecting order: $e');
+    }
+  }
 }
 
 final clientRepositoryProvider = Provider<ClientRepository>((ref) {

@@ -16,7 +16,8 @@ class smartFleet extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: navigatorKey,
-      scaffoldMessengerKey: SnackbarService.scaffoldMessengerKey, 
-      home: LoginPage());
+      scaffoldMessengerKey: SnackbarService.scaffoldMessengerKey,
+      home: LoginPage(),
+    );
   }
 }

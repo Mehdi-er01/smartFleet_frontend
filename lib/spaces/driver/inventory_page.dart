@@ -1,68 +1,78 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartfleet_frontend/dto/order_dto.dart';
+import 'package:smartfleet_frontend/service/driver_repository.dart';
 
 // ---------------------------------------------------------
-// 1. DATA MODEL
+// INVENTORY PAGE
 // ---------------------------------------------------------
-enum PackageStatus { pending, delivered, failed }
-
-class PackageModel {
-  final String id;
-  final String customerName;
-  final String address;
-  final String instructions;
-  PackageStatus status;
-
-  PackageModel({
-    required this.id,
-    required this.customerName,
-    required this.address,
-    this.instructions = '',
-    this.status = PackageStatus.pending,
-  });
-}
-
-// ---------------------------------------------------------
-// 2. INVENTORY PAGE
-// ---------------------------------------------------------
-class InventoryPage extends StatefulWidget {
+class InventoryPage extends ConsumerStatefulWidget {
   const InventoryPage({super.key});
 
   @override
-  State<InventoryPage> createState() => _InventoryPageState();
+  ConsumerState<InventoryPage> createState() => _InventoryPageState();
 }
 
-class _InventoryPageState extends State<InventoryPage> {
-  // Mock data representing the driver's truck load for the day
-  final List<PackageModel> _manifest = [
-    PackageModel(
-      id: '#7620937',
-      customerName: 'Ahmed R.',
-      address: 'Route de Marrakech, Settat',
-      instructions: 'Call upon arrival. Fragile.',
-    ),
-    PackageModel(
-      id: '#7620938',
-      customerName: 'Fatima Z.',
-      address: 'Technopark, Casablanca',
-      status: PackageStatus.delivered,
-    ),
-    PackageModel(
-      id: '#7620939',
-      customerName: 'Youssef B.',
-      address: 'FSTS Campus, Settat',
-      instructions: 'Leave at the main reception.',
-    ),
-  ];
+class _InventoryPageState extends ConsumerState<InventoryPage> {
+  bool _isLoading = true;
+  String? _error;
+  List<OrderDto> _manifest = [];
 
-  // Helper to count pending packages
-  int get _pendingCount => 
-      _manifest.where((p) => p.status == PackageStatus.pending).length;
+  @override
+  void initState() {
+    super.initState();
+    _loadManifest();
+  }
 
-  void _updateStatus(PackageModel package, PackageStatus newStatus) {
+  Future<void> _loadManifest() async {
     setState(() {
-      package.status = newStatus;
+      _isLoading = true;
+      _error = null;
     });
-    // TODO: Send API request to your Go (Gin) backend to update the database
+    try {
+      final repository = ref.read(driverRepositoryProvider);
+      final activeSp = await repository.getActiveSubProgram();
+      
+      if (activeSp != null && activeSp.orderIds.isNotEmpty) {
+        final orders = await repository.getOrdersByIds(activeSp.orderIds);
+        if (mounted) {
+          setState(() {
+            _manifest = orders;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _manifest = [];
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  int get _pendingCount => 
+      _manifest.where((p) => p.status != 'DELIVERED' && p.status != 'FAILED').length;
+
+  Future<void> _updateStatus(OrderDto package, String newStatus) async {
+    try {
+      final repository = ref.read(driverRepositoryProvider);
+      await repository.updateOrderStatus(package.id, newStatus);
+      // Reload list to get updated status
+      _loadManifest();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating status: $e')));
+      }
+    }
   }
 
   @override
@@ -71,51 +81,58 @@ class _InventoryPageState extends State<InventoryPage> {
       backgroundColor: const Color(0xFFF7F8FA),
       body: SafeArea(
         bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 16),
-            _buildHeader(),
-            const SizedBox(height: 20),
-            
-            // Big Scanner Button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: _buildScanButton(),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Section Title
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20.0),
-              child: Text(
-                'Today\'s Manifest',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Scrollable List of Packages
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(
-                  left: 20, 
-                  right: 20, 
-                  bottom: 120, // Pad for the bottom nav bar
-                ),
-                itemCount: _manifest.length,
-                itemBuilder: (context, index) {
-                  return _buildPackageCard(_manifest[index]);
-                },
-              ),
-            ),
-          ],
-        ),
+        child: _isLoading 
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null 
+                ? Center(child: Text("Error: $_error"))
+                : RefreshIndicator(
+                    onRefresh: _loadManifest,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        _buildHeader(),
+                        const SizedBox(height: 20),
+                        
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          child: _buildScanButton(),
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20.0),
+                          child: Text(
+                            'Today\'s Manifest',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        Expanded(
+                          child: _manifest.isEmpty 
+                              ? const Center(child: Text("No packages assigned today."))
+                              : ListView.builder(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.only(
+                                    left: 20, 
+                                    right: 20, 
+                                    bottom: 120, 
+                                  ),
+                                  itemCount: _manifest.length,
+                                  itemBuilder: (context, index) {
+                                    return _buildPackageCard(_manifest[index]);
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
       ),
     );
   }
@@ -148,14 +165,17 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.grey.shade300),
+          GestureDetector(
+            onTap: _loadManifest,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: const Icon(Icons.sync, color: Colors.black87),
             ),
-            child: const Icon(Icons.sync, color: Colors.black87),
           ),
         ],
       ),
@@ -165,8 +185,9 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildScanButton() {
     return GestureDetector(
       onTap: () {
-        // TODO: Open QR Camera
-        print("Opening Scanner...");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('QR scanner not yet available'), behavior: SnackBarBehavior.floating),
+        );
       },
       child: Container(
         width: double.infinity,
@@ -176,7 +197,7 @@ class _InventoryPageState extends State<InventoryPage> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 10,
               offset: const Offset(0, 4),
             )
@@ -201,9 +222,9 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildPackageCard(PackageModel package) {
-    final isDelivered = package.status == PackageStatus.delivered;
-    final isFailed = package.status == PackageStatus.failed;
+  Widget _buildPackageCard(OrderDto package) {
+    final isDelivered = package.status == 'DELIVERED';
+    final isFailed = package.status == 'FAILED';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -212,14 +233,13 @@ class _InventoryPageState extends State<InventoryPage> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isDelivered 
-              ? const Color(0xFF4CAF50).withOpacity(0.3) 
+              ? const Color(0xFF4CAF50).withValues(alpha: 0.3) 
               : isFailed 
-                  ? Colors.red.withOpacity(0.3)
+                  ? Colors.red.withValues(alpha: 0.3)
                   : Colors.grey.shade200,
         ),
       ),
       child: Theme(
-        // Removes the default divider lines from ExpansionTile
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -227,7 +247,7 @@ class _InventoryPageState extends State<InventoryPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Order ${package.id}',
+                package.orderNumber,
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
               _buildStatusBadge(package.status),
@@ -236,7 +256,7 @@ class _InventoryPageState extends State<InventoryPage> {
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 4.0),
             child: Text(
-              package.address,
+              package.deliveryAddress,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -250,23 +270,29 @@ class _InventoryPageState extends State<InventoryPage> {
                 children: [
                   const Divider(),
                   const SizedBox(height: 8),
-                  Text('Customer: ${package.customerName}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                  if (package.instructions.isNotEmpty) ...[
+                  if (package.deliveryDescription != null && package.deliveryDescription!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Note: ${package.instructions}',
-                      style: const TextStyle(color: Colors.orange, fontSize: 13),
+                      package.deliveryDescription!,
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
                     ),
                   ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _detailChip(Icons.scale_outlined, '${package.weightKg} kg'),
+                      const SizedBox(width: 8),
+                      _detailChip(Icons.view_in_ar_outlined, '${package.volumeM2} m²'),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   
-                  // Action Buttons for the Driver
-                  if (package.status == PackageStatus.pending)
+                  if (!isDelivered && !isFailed)
                     Row(
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _updateStatus(package, PackageStatus.delivered),
+                            onPressed: () => _updateStatus(package, 'DELIVERED'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF4CAF50),
                               foregroundColor: Colors.white,
@@ -280,7 +306,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _updateStatus(package, PackageStatus.failed),
+                            onPressed: () => _updateStatus(package, 'FAILED'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.red.shade50,
                               foregroundColor: Colors.red,
@@ -302,27 +328,45 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildStatusBadge(PackageStatus status) {
+  Widget _detailChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: Colors.black54),
+          const SizedBox(width: 5),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
     Color bgColor;
     Color textColor;
-    String label;
 
     switch (status) {
-      case PackageStatus.delivered:
-        bgColor = const Color(0xFFE2F6D1);
+      case 'DELIVERED':
+        bgColor = const Color(0xFFE8F5E9);
         textColor = const Color(0xFF2E7D32);
-        label = 'Delivered';
         break;
-      case PackageStatus.failed:
-        bgColor = Colors.red.shade50;
-        textColor = Colors.red.shade700;
-        label = 'Failed';
+      case 'FAILED':
+        bgColor = const Color(0xFFFFEBEE);
+        textColor = const Color(0xFFC62828);
         break;
-      case PackageStatus.pending:
+      case 'IN_TRANSIT':
+      case 'IN_PROGRESS':
+        bgColor = Colors.black;
+        textColor = Colors.white;
+        break;
       default:
         bgColor = const Color(0xFFF0F1F5);
-        textColor = Colors.black87;
-        label = 'Pending';
+        textColor = Colors.black54;
         break;
     }
 
@@ -333,7 +377,7 @@ class _InventoryPageState extends State<InventoryPage> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        label,
+        status,
         style: TextStyle(
           color: textColor,
           fontSize: 12,

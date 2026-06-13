@@ -1,9 +1,15 @@
+import 'dart:io';
+
+import 'package:csv/csv.dart';
+import 'package:excel/excel.dart' hide Border;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smartfleet_frontend/dto/delivery_program_dto.dart';
 import 'package:smartfleet_frontend/dto/order_dto.dart';
 import 'package:smartfleet_frontend/dto/sub_program_dto.dart';
 import 'package:smartfleet_frontend/service/dispatch_repository.dart';
+import 'package:smartfleet_frontend/service/geocoding_service.dart';
 import 'package:smartfleet_frontend/service/snackbar_service.dart';
 
 // ═══════════════════════════════════════════════════════════
@@ -41,12 +47,19 @@ class _DispatchCreationPageState extends ConsumerState<DispatchCreationPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final list = await ref.read(dispatchRepositoryProvider).getPrograms();
-    if (mounted) {
-      setState(() {
-        _programs = list;
-        _loading = false;
-      });
+    try {
+      final list = await ref.read(dispatchRepositoryProvider).getPrograms();
+      if (mounted) {
+        setState(() {
+          _programs = list;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        SnackbarService.showError('Failed to load programs: $e');
+      }
     }
   }
 
@@ -108,11 +121,6 @@ class _DispatchCreationPageState extends ConsumerState<DispatchCreationPage> {
         ),
         centerTitle: false,
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.black,
-        onPressed: () => setState(() => _view = _View.create),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
       body: Column(
         children: [
           // Search
@@ -120,13 +128,43 @@ class _DispatchCreationPageState extends ConsumerState<DispatchCreationPage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: _buildSearchBar(_searchCtrl, () => setState(() {})),
           ),
-          // Status filter chips
+          // Create button + Status filter chips
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  // Create Programme button
+                  GestureDetector(
+                    onTap: () => setState(() => _view = _View.create),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add, size: 16, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'New Programme',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   _chip(
                     'All',
                     _statusFilter == null,
@@ -243,9 +281,15 @@ class _DispatchCreationPageState extends ConsumerState<DispatchCreationPage> {
   }
 
   Future<void> _optimize(DeliveryProgramDto p) async {
-    await ref.read(dispatchRepositoryProvider).optimizeProgram(p.id);
-    SnackbarService.showSuccess('Optimization launched for ${p.programNumber}');
-    _load();
+    try {
+      await ref.read(dispatchRepositoryProvider).optimizeProgram(p.id);
+      SnackbarService.showSuccess(
+        'Optimization launched for ${p.programNumber}',
+      );
+      _load();
+    } catch (e) {
+      SnackbarService.showError('Optimization failed: $e');
+    }
   }
 }
 
@@ -619,7 +663,7 @@ class _ProgramDetail extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// PROGRAMME CREATE VIEW
+// PROGRAMME CREATE VIEW — 3-STEP WIZARD
 // ═══════════════════════════════════════════════════════════
 class _ProgramCreate extends ConsumerStatefulWidget {
   final VoidCallback onBack;
@@ -631,6 +675,7 @@ class _ProgramCreate extends ConsumerStatefulWidget {
 }
 
 class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
+  int _step = 0; // 0=Orders, 1=Review, 2=Confirm
   final _orders = <_OrderDraft>[];
   final _notesCtrl = TextEditingController();
   bool _submitting = false;
@@ -641,15 +686,246 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
     super.dispose();
   }
 
-  void _addOrder() {
-    setState(() => _orders.add(_OrderDraft()));
-  }
-
-  void _removeOrder(int i) {
-    setState(() => _orders.removeAt(i));
-  }
-
+  void _addOrder() => setState(() => _orders.add(_OrderDraft()));
+  void _removeOrder(int i) => setState(() => _orders.removeAt(i));
   bool get _isValid => _orders.isNotEmpty && _orders.every((o) => o.isValid);
+
+  // ── Geocode a single order's address → lat/lon ──
+  Future<void> _geocodeOrder(_OrderDraft draft) async {
+    final addr = draft.addressCtrl.text.trim();
+    if (addr.isEmpty) {
+      SnackbarService.showError('Enter an address first');
+      return;
+    }
+    setState(() => draft.geocoding = true);
+    final result = await GeocodingService.geocode(addr);
+    if (!mounted) return;
+    setState(() {
+      draft.geocoding = false;
+      if (result != null) {
+        draft.latCtrl.text = result.lat.toStringAsFixed(6);
+        draft.lonCtrl.text = result.lon.toStringAsFixed(6);
+        draft.geocoded = true;
+      } else {
+        SnackbarService.showError('Could not geocode: $addr');
+      }
+    });
+  }
+
+  // ── Geocode all orders that don't have coords yet ──
+  Future<void> _geocodeAll() async {
+    final needsGeocode = _orders
+        .where(
+          (o) =>
+              o.addressCtrl.text.trim().isNotEmpty &&
+              o.latCtrl.text.trim().isEmpty,
+        )
+        .toList();
+    if (needsGeocode.isEmpty) {
+      SnackbarService.showError('All orders already have coordinates');
+      return;
+    }
+    for (final draft in needsGeocode) {
+      await _geocodeOrder(draft);
+    }
+  }
+
+  // ── Bulk add N empty orders ──
+  void _bulkAdd() {
+    showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        final ctrl = TextEditingController(text: '5');
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Add Multiple Orders',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SizedBox(
+            width: 300,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'How many empty order forms do you want to add?',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ctrl,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: _inputDeco('Number of orders'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final n = int.tryParse(ctrl.text) ?? 0;
+                Navigator.pop(ctx, n);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    ).then((n) {
+      if (n != null && n > 0) {
+        setState(() {
+          for (var i = 0; i < n; i++) {
+            _orders.add(_OrderDraft());
+          }
+        });
+        SnackbarService.showSuccess('Added $n empty orders');
+      }
+    });
+  }
+
+  // ── Import orders from CSV or XLSX file ──
+  Future<void> _importFromFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv', 'xlsx', 'xls'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final path = file.path;
+    if (path == null) {
+      SnackbarService.showError('Could not access file');
+      return;
+    }
+
+    try {
+      final ext = path.split('.').last.toLowerCase();
+      final List<_OrderDraft> imported = [];
+
+      if (ext == 'csv') {
+        final content = await File(path).readAsString();
+        final rows = const CsvToListConverter(eol: '\n').convert(content);
+        if (rows.isEmpty) {
+          SnackbarService.showError('CSV file is empty');
+          return;
+        }
+        // Try to detect header row
+        final firstRow = rows.first;
+        final hasHeader = firstRow.any(
+          (c) =>
+              c.toString().toLowerCase().contains('address') ||
+              c.toString().toLowerCase().contains('weight'),
+        );
+        final dataRows = hasHeader ? rows.skip(1).toList() : rows;
+
+        for (final row in dataRows) {
+          if (row.isEmpty) continue;
+          final draft = _OrderDraft();
+          // Expected columns: address, weight, volume, [lat, lon], [description]
+          if (row.length >= 1)
+            draft.addressCtrl.text = row[0].toString().trim();
+          if (row.length >= 2) draft.weightCtrl.text = row[1].toString().trim();
+          if (row.length >= 3) draft.volumeCtrl.text = row[2].toString().trim();
+          if (row.length >= 4 && row[3].toString().trim().isNotEmpty) {
+            draft.latCtrl.text = row[3].toString().trim();
+            draft.lonCtrl.text = row.length >= 5
+                ? row[4].toString().trim()
+                : '';
+            draft.geocoded = true;
+          }
+          if (row.length >= 6) draft.descCtrl.text = row[5].toString().trim();
+          if (draft.addressCtrl.text.isNotEmpty) imported.add(draft);
+        }
+      } else if (ext == 'xlsx' || ext == 'xls') {
+        final bytes = await File(path).readAsBytes();
+        final excel = Excel.decodeBytes(bytes);
+        final sheet = excel.tables[excel.tables.keys.first]!;
+        final maxRow = sheet.maxRows;
+        if (maxRow < 1) {
+          SnackbarService.showError('Excel file is empty');
+          return;
+        }
+        // Skip header if it looks like one
+        int startRow = 0;
+        final firstRow = sheet.rows.isNotEmpty ? sheet.rows.first : [];
+        if (firstRow.any((c) {
+          final v = c?.value?.toString().toLowerCase() ?? '';
+          return v.contains('address') || v.contains('weight');
+        })) {
+          startRow = 1;
+        }
+        for (var r = startRow; r < maxRow; r++) {
+          final row = sheet.rows[r];
+          if (row.isEmpty) continue;
+          String cell(int col) {
+            if (col >= row.length) return '';
+            return row[col]?.value?.toString().trim() ?? '';
+          }
+
+          final draft = _OrderDraft();
+          draft.addressCtrl.text = cell(0);
+          draft.weightCtrl.text = cell(1);
+          draft.volumeCtrl.text = cell(2);
+          final lat = cell(3);
+          final lon = cell(4);
+          if (lat.isNotEmpty) {
+            draft.latCtrl.text = lat;
+            draft.lonCtrl.text = lon;
+            draft.geocoded = true;
+          }
+          draft.descCtrl.text = cell(5);
+          if (draft.addressCtrl.text.isNotEmpty) imported.add(draft);
+        }
+      }
+
+      if (imported.isEmpty) {
+        SnackbarService.showError('No valid orders found in file');
+        return;
+      }
+
+      // Geocode orders that don't have coordinates
+      int needGeocode = imported
+          .where((o) => o.latCtrl.text.trim().isEmpty)
+          .length;
+      setState(() => _orders.addAll(imported));
+      SnackbarService.showSuccess(
+        'Imported ${imported.length} orders'
+        '${needGeocode > 0 ? ' ($needGeocode need geocoding)' : ''}',
+      );
+    } catch (e) {
+      SnackbarService.showError('Failed to parse file: $e');
+    }
+  }
+
+  void _next() {
+    if (_step == 0 && !_isValid) {
+      SnackbarService.showError('Add at least one valid order');
+      return;
+    }
+    setState(() => _step++);
+  }
+
+  void _prev() {
+    if (_step > 0) setState(() => _step--);
+  }
 
   Future<void> _submit() async {
     if (!_isValid) return;
@@ -674,7 +950,7 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
         );
       }).toList();
 
-      await repo.createProgram(
+      await repo.createProgramWithOrders(
         orders,
         _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
       );
@@ -699,7 +975,7 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
         foregroundColor: Colors.black,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: widget.onBack,
+          onPressed: _step > 0 ? _prev : widget.onBack,
         ),
         title: const Text(
           'New Programme',
@@ -707,145 +983,551 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
         ),
         centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Orders section
-            Row(
+      body: Column(
+        children: [
+          _buildStepper(),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _step == 0
+                  ? _buildStepOrders()
+                  : _step == 1
+                  ? _buildStepReview()
+                  : _buildStepConfirm(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STEPPER BAR ──
+  Widget _buildStepper() {
+    final labels = ['Orders', 'Review', 'Confirm'];
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: List.generate(labels.length, (i) {
+          final active = i == _step;
+          final done = i < _step;
+          return Expanded(
+            child: Row(
               children: [
-                const Text(
-                  'Orders',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? Colors.black
+                              : done
+                              ? Colors.green
+                              : Colors.grey.shade200,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: done
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 16,
+                                  color: Colors.white,
+                                )
+                              : Text(
+                                  '${i + 1}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: active
+                                        ? Colors.white
+                                        : Colors.grey.shade500,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        labels[i],
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: active
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: active ? Colors.black : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: _addOrder,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                if (i < labels.length - 1)
+                  Container(
+                    height: 2,
+                    width: 32,
+                    color: done ? Colors.green : Colors.grey.shade200,
+                  ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  // ── STEP 1: ORDERS ──
+  Widget _buildStepOrders() {
+    return SingleChildScrollView(
+      key: const ValueKey('step0'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Action buttons row ──
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _toolBtn(Icons.add, 'Add Order', _addOrder),
+                const SizedBox(width: 8),
+                _toolBtn(Icons.format_list_numbered, 'Bulk Add', _bulkAdd),
+                const SizedBox(width: 8),
+                _toolBtn(Icons.upload_file, 'Import CSV/XLSX', _importFromFile),
+                if (_orders.any(
+                  (o) =>
+                      o.latCtrl.text.trim().isEmpty &&
+                      o.addressCtrl.text.trim().isNotEmpty,
+                )) ...[
+                  const SizedBox(width: 8),
+                  _toolBtn(
+                    Icons.my_location,
+                    'Geocode All',
+                    _geocodeAll,
+                    color: Colors.green,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_orders.isNotEmpty)
+            Text(
+              '${_orders.length} order${_orders.length > 1 ? 's' : ''}  •  '
+              '${_orders.where((o) => o.geocoded || o.latCtrl.text.trim().isNotEmpty).length} with coordinates',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          const SizedBox(height: 12),
+          if (_orders.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.shopping_bag_outlined,
+                    size: 40,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No orders added yet',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Add orders manually, bulk add multiple,\nor import from a CSV/XLSX file.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Expected CSV columns:\naddress, weight, volume, [lat, lon], [description]',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade400,
+                      fontFamily: 'monospace',
                     ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._orders.asMap().entries.map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildOrderForm(e.key, e.value),
+              ),
+            ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isValid ? _next : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                disabledBackgroundColor: Colors.grey.shade300,
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Continue to Review',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_forward, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  // ── STEP 2: REVIEW ──
+  Widget _buildStepReview() {
+    final totalWeight = _orders.fold<double>(
+      0,
+      (s, o) => s + (double.tryParse(o.weightCtrl.text) ?? 0),
+    );
+    final totalVolume = _orders.fold<double>(
+      0,
+      (s, o) => s + (double.tryParse(o.volumeCtrl.text) ?? 0),
+    );
+
+    return SingleChildScrollView(
+      key: const ValueKey('step1'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Review Orders',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          // Summary card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                _reviewStat('${_orders.length}', 'Orders'),
+                _reviewStat('${totalWeight.toStringAsFixed(0)} kg', 'Weight'),
+                _reviewStat('${totalVolume.toStringAsFixed(0)} m²', 'Volume'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Order list
+          ..._orders.asMap().entries.map((e) {
+            final i = e.key;
+            final o = e.value;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: Colors.black,
+                      color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.add, size: 16, color: Colors.white),
-                        SizedBox(width: 4),
                         Text(
-                          'Add Order',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white,
+                          o.addressCtrl.text.trim(),
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${o.weightCtrl.text} kg  •  ${o.volumeCtrl.text} m²',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_orders.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.shopping_bag_outlined,
-                      size: 40,
-                      color: Colors.grey.shade400,
+                  Icon(Icons.check_circle, color: Colors.green, size: 20),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+          // Notes
+          const Text(
+            'Notes (optional)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _notesCtrl,
+            maxLines: 3,
+            decoration: _inputDeco('Add notes about this programme...'),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _prev,
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: const Text('Back'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black,
+                    side: const BorderSide(color: Colors.black),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No orders added yet',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap "Add Order" to start',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              ..._orders.asMap().entries.map(
-                (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildOrderForm(e.key, e.value),
+                  ),
                 ),
               ),
-            const SizedBox(height: 20),
-            // Notes
-            const Text(
-              'Notes (optional)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _notesCtrl,
-              maxLines: 3,
-              decoration: _inputDeco('Add notes about this programme...'),
-            ),
-            const SizedBox(height: 32),
-            // Submit
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: (!_isValid || _submitting) ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _next,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                  disabledBackgroundColor: Colors.grey.shade300,
-                ),
-                child: _submitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Create & Send for Routing',
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Continue to Confirm',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, size: 18),
+                    ],
+                  ),
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  Widget _reviewStat(String val, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            val,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
             ),
-            const SizedBox(height: 40),
-          ],
-        ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── STEP 3: CONFIRM ──
+  Widget _buildStepConfirm() {
+    return SingleChildScrollView(
+      key: const ValueKey('step2'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Confirm & Submit',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.send, size: 28, color: Colors.green),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Ready to create programme?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_orders.length} order${_orders.length > 1 ? 's' : ''} will be created and linked to a new delivery programme.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+                if (_notesCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.notes,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _notesCtrl.text.trim(),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _submitting ? null : _prev,
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: const Text('Back'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black,
+                    side: const BorderSide(color: Colors.black),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _submitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    disabledBackgroundColor: Colors.grey.shade300,
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Create Programme',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 40),
+        ],
       ),
     );
   }
 
   Widget _buildOrderForm(int index, _OrderDraft draft) {
+    final hasCoords = draft.latCtrl.text.trim().isNotEmpty;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -856,6 +1538,7 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header
           Row(
             children: [
               Text(
@@ -865,6 +1548,26 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
                   fontSize: 14,
                 ),
               ),
+              const SizedBox(width: 8),
+              if (hasCoords)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'GEOCODED',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
               const Spacer(),
               GestureDetector(
                 onTap: () => _removeOrder(index),
@@ -872,7 +1575,7 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.08),
+                    color: Colors.red.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(Icons.close, size: 16, color: Colors.red),
@@ -881,9 +1584,42 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
             ],
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: draft.addressCtrl,
-            decoration: _inputDeco('Delivery address'),
+          // Address + Geocode button
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: draft.addressCtrl,
+                  decoration: _inputDeco('Delivery address'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: draft.geocoding ? null : () => _geocodeOrder(draft),
+                child: Container(
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: hasCoords ? Colors.green : Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: draft.geocoding
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Icon(
+                          hasCoords ? Icons.check : Icons.my_location,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Row(
@@ -906,31 +1642,76 @@ class _ProgramCreateState extends ConsumerState<_ProgramCreate> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: draft.latCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: _inputDeco('Latitude'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: draft.lonCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: _inputDeco('Longitude'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
           TextField(
             controller: draft.descCtrl,
             decoration: _inputDeco('Description (optional)'),
           ),
+          // Show coords read-only if geocoded
+          if (hasCoords) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: 14,
+                    color: Colors.grey.shade500,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${draft.latCtrl.text}, ${draft.lonCtrl.text}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _toolBtn(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: (color ?? Colors.black).withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: (color ?? Colors.black).withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color ?? Colors.black87),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color ?? Colors.black87,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -946,6 +1727,8 @@ class _OrderDraft {
   final latCtrl = TextEditingController();
   final lonCtrl = TextEditingController();
   final descCtrl = TextEditingController();
+  bool geocoding = false; // true while geocoding in progress
+  bool geocoded = false; // true once lat/lon have been fetched
 
   bool get isValid =>
       addressCtrl.text.trim().isNotEmpty &&

@@ -1,468 +1,695 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartfleet_frontend/dto/sub_program_dto.dart';
+import 'package:smartfleet_frontend/dto/user_dto.dart';
+import 'package:smartfleet_frontend/login_page.dart';
+import 'package:smartfleet_frontend/service/auth_service.dart';
+import 'package:smartfleet_frontend/service/driver_repository.dart';
+import 'package:smartfleet_frontend/service/storage_service.dart';
 import 'package:smartfleet_frontend/spaces/driver/inventory_page.dart';
 import 'package:smartfleet_frontend/spaces/driver/map_page.dart';
 
-// ---------------------------------------------------------
-// 1. DATA MODELS (Ready for your backend JSON serialization)
-// ---------------------------------------------------------
-class DeliveryModel {
-  final String trackingNumber;
-  final String fromLocation;
-  final String toLocation;
-  final String arrivalDate;
-  final String status;
-  final double progress; // 0.0 to 1.0
-
-  DeliveryModel({
-    required this.trackingNumber,
-    required this.fromLocation,
-    required this.toLocation,
-    required this.arrivalDate,
-    required this.status,
-    required this.progress,
-  });
-}
-
-// ---------------------------------------------------------
-// 2. MAIN PAGE (Stateful for navigation & input handling)
-// ---------------------------------------------------------
-class HomePage extends StatefulWidget {
+// ─────────────────────────────────────────
+// ROOT SHELL
+// ─────────────────────────────────────────
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends ConsumerState<HomePage> {
   int _currentNavIndex = 0;
-  final TextEditingController _searchController = TextEditingController();
 
-  // Mock data simulating a backend fetch
-  final DeliveryModel _activeDelivery = DeliveryModel(
-    trackingNumber: '#36123217',
-    fromLocation: 'Paris',
-    toLocation: 'Berlin',
-    arrivalDate: '21 Dec, 2025',
-    status: 'In transit',
-    progress: 0.65,
-  );
-
-  final List<DeliveryModel> _deliveryHistory = [
-    DeliveryModel(
-      trackingNumber: '#7620937',
-      fromLocation: 'Paris',
-      toLocation: 'Berlin',
-      arrivalDate: '15 Dec, 2025',
-      status: 'Delivered',
-      progress: 1.0,
-    ),
-    DeliveryModel(
-      trackingNumber: '#7620938',
-      fromLocation: 'Settat',
-      toLocation: 'Casablanca',
-      arrivalDate: '10 Dec, 2025',
-      status: 'Delivered',
-      progress: 1.0,
-    ),
-  ];
+  bool _isLoading = true;
+  String? _error;
+  SubProgramDto? _activeSubProgram;
+  List<SubProgramDto> _allSubPrograms = [];
+  UserDto? _currentUser;
 
   @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadData();
   }
 
-  void _onSearch(String query) {
-    // TODO: Trigger backend search/filter here
-    print("Searching for: $query");
+  Future<void> _loadData() async {
+    setState(() { _isLoading = true; _error = null; });
+    try {
+      final repo = ref.read(driverRepositoryProvider);
+      final auth = ref.read(authServiceProvider);
+      final results = await Future.wait([
+        repo.getActiveSubProgram(),
+        repo.getMySubPrograms(),
+        auth.getCurrentUser(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _activeSubProgram = results[0] as SubProgramDto?;
+          _allSubPrograms = results[1] as List<SubProgramDto>;
+          _currentUser = results[2] as UserDto?;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
+    }
   }
 
-  void _onNavTapped(int index) {
-    setState(() {
-      _currentNavIndex = index;
-    });
-    // TODO: Handle actual page transitions or state changes here
+  @override
+  Widget build(BuildContext context) {
+    final pages = [
+      _DashboardTab(
+        activeSubProgram: _activeSubProgram,
+        allSubPrograms: _allSubPrograms,
+        currentUser: _currentUser,
+        onRefresh: _loadData,
+      ),
+      const InventoryPage(),
+      MapPage(activeSubProgram: _activeSubProgram),
+      _ProfileTab(currentUser: _currentUser),
+    ];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
+      extendBody: true,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+          : _error != null
+              ? Center(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.wifi_off_outlined, size: 48, color: Colors.grey.shade400),
+                    const SizedBox(height: 16),
+                    Text('Failed to load', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Text(_error!, style: TextStyle(fontSize: 13, color: Colors.grey.shade500), textAlign: TextAlign.center),
+                    const SizedBox(height: 20),
+                    GestureDetector(
+                      onTap: _loadData,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
+                        child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ]),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: IndexedStack(index: _currentNavIndex, children: pages),
+                ),
+      bottomNavigationBar: _BottomNavBar(
+        currentIndex: _currentNavIndex,
+        onTap: (i) => setState(() => _currentNavIndex = i),
+      ),
+    );
   }
+}
+
+// ─────────────────────────────────────────
+// DASHBOARD TAB
+// ─────────────────────────────────────────
+class _DashboardTab extends StatelessWidget {
+  final SubProgramDto? activeSubProgram;
+  final List<SubProgramDto> allSubPrograms;
+  final UserDto? currentUser;
+  final VoidCallback onRefresh;
+
+  const _DashboardTab({
+    required this.activeSubProgram,
+    required this.allSubPrograms,
+    required this.currentUser,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final history = allSubPrograms
+        .where((sp) => sp.id != activeSubProgram?.id)
+        .toList();
+
+    final hour = DateTime.now().hour;
+    final salutation = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+
+    return SafeArea(
+      bottom: false,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+
+            // ── Header ──
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300, width: 2),
+                  ),
+                  child: const CircleAvatar(
+                    radius: 22,
+                    backgroundColor: Color(0xFFF0F1F5),
+                    child: Icon(Icons.person, color: Colors.black54, size: 22),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$salutation, ${currentUser?.name ?? "Driver"}',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        currentUser?.email ?? 'SmartFleet Driver',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: onRefresh,
+                  child: Container(
+                    height: 44, width: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: const Icon(Icons.refresh, color: Colors.black87, size: 20),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // ── Metrics ──
+            Row(
+              children: [
+                _metricCard(
+                  Icons.assignment_outlined,
+                  '${allSubPrograms.length}',
+                  'Total Routes',
+                  allSubPrograms.isEmpty ? 'none' : '${allSubPrograms.where((s) => s.status == 'COMPLETED').length} completed',
+                ),
+                const SizedBox(width: 12),
+                _metricCard(
+                  Icons.local_shipping_outlined,
+                  activeSubProgram != null ? '${activeSubProgram!.approvedOrdersCount}/${activeSubProgram!.totalOrdersCount}' : '—',
+                  'Deliveries',
+                  activeSubProgram != null ? 'active route' : 'no active route',
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // ── Active subprogram ──
+            Text('ACTIVE ROUTE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+            const SizedBox(height: 4),
+            const Text('Current Assignment', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.black)),
+            const SizedBox(height: 16),
+
+            activeSubProgram != null
+                ? _ActiveCard(sp: activeSubProgram!)
+                : _emptyCard(Icons.route_outlined, 'No active route', 'You have no subprogram assigned right now.'),
+
+            const SizedBox(height: 24),
+
+            // ── History ──
+            Text('ROUTE HISTORY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+            const SizedBox(height: 4),
+            Text('${history.length} past route${history.length == 1 ? '' : 's'}',
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.black)),
+            const SizedBox(height: 16),
+
+            if (history.isEmpty)
+              _emptyCard(Icons.history_outlined, 'No history yet', 'Completed routes will appear here.')
+            else
+              ...history.map((sp) => _HistoryCard(sp: sp)),
+
+            const SizedBox(height: 120),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metricCard(IconData icon, String value, String label, String sub) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                  child: Icon(icon, size: 18, color: Colors.black87),
+                ),
+                const Spacer(),
+                Text(sub, style: TextStyle(fontSize: 10, color: Colors.grey.shade500), overflow: TextOverflow.ellipsis),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyCard(IconData icon, String title, String sub) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 48, color: Colors.grey.shade300),
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+          const SizedBox(height: 4),
+          Text(sub, style: TextStyle(fontSize: 13, color: Colors.grey.shade500), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// ACTIVE ROUTE CARD
+// ─────────────────────────────────────────
+class _ActiveCard extends StatelessWidget {
+  final SubProgramDto sp;
+  const _ActiveCard({required this.sp});
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = sp.totalOrdersCount > 0
+        ? sp.approvedOrdersCount / sp.totalOrdersCount
+        : 0.0;
+
+    final statusInfo = _statusStyle(sp.status);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('SUBPROGRAM', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: Colors.white.withValues(alpha: 0.5))),
+                  const SizedBox(height: 4),
+                  Text(sp.subProgramNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(statusInfo.$1, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Progress bar
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Progress', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6), fontWeight: FontWeight.w500)),
+                  Text('${sp.approvedOrdersCount}/${sp.totalOrdersCount} delivered',
+                      style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress.toDouble(),
+                  minHeight: 6,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Stats row
+          Row(
+            children: [
+              _statChip(Icons.receipt_outlined, '${sp.totalOrdersCount} orders'),
+              const SizedBox(width: 10),
+              if (sp.estimatedDistanceKm != null)
+                _statChip(Icons.straighten_outlined, '${sp.estimatedDistanceKm!.toStringAsFixed(1)} km'),
+              if (sp.estimatedDurationMinutes != null) ...[
+                const SizedBox(width: 10),
+                _statChip(Icons.timer_outlined, '${sp.estimatedDurationMinutes} min'),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.7)),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85), fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  (String, Color) _statusStyle(String status) {
+    switch (status) {
+      case 'IN_PROGRESS': return ('IN PROGRESS', Colors.orange);
+      case 'COMPLETED': return ('COMPLETED', Colors.green);
+      case 'PENDING': return ('PENDING', Colors.grey);
+      default: return (status, Colors.grey);
+    }
+  }
+}
+
+// ─────────────────────────────────────────
+// HISTORY CARD
+// ─────────────────────────────────────────
+class _HistoryCard extends StatelessWidget {
+  final SubProgramDto sp;
+  const _HistoryCard({required this.sp});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompleted = sp.status == 'COMPLETED';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isCompleted ? const Color(0xFFE8F5E9) : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isCompleted ? Icons.check_circle_outline : Icons.route_outlined,
+              color: isCompleted ? const Color(0xFF2E7D32) : Colors.black54,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(sp.subProgramNumber, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.black87)),
+                const SizedBox(height: 3),
+                Text(
+                  '${sp.totalOrdersCount} orders · ${sp.estimatedDistanceKm?.toStringAsFixed(1) ?? "0"} km',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: isCompleted ? const Color(0xFFE8F5E9) : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              isCompleted ? 'Done' : sp.status,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: isCompleted ? const Color(0xFF2E7D32) : Colors.black54,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────
+// PROFILE TAB
+// ─────────────────────────────────────────
+class _ProfileTab extends StatelessWidget {
+  final UserDto? currentUser;
+  const _ProfileTab({this.currentUser});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
-      extendBody: true,
       body: SafeArea(
         bottom: false,
-        // Using IndexedStack allows you to keep the state of different pages 
-        // alive while switching between bottom nav tabs.
-        child: IndexedStack(
-          index: _currentNavIndex,
-          children: [
-            _buildHomeTab(),
-            InventoryPage(),
-            MapPage(),
-            const Center(child: Text("Settings Page")),
-
-          ],
-        ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: _currentNavIndex,
-        onTap: _onNavTapped,
-      ),
-    );
-  }
-
-  // Extracted the home tab content so the build method stays clean
-  Widget _buildHomeTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          _buildHeader(),
-          const SizedBox(height: 24),
-          
-          // Functional Search Widget
-          SearchWidget(
-            controller: _searchController,
-            onSubmitted: _onSearch,
-          ),
-          
-          const SizedBox(height: 32),
-          const Text(
-            'Nearest deliveries',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildActiveDeliveryCard(_activeDelivery),
-          
-          const SizedBox(height: 32),
-          const Text(
-            'Delivery history',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Dynamically building the history list from the model
-          ..._deliveryHistory.map((delivery) => Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
-                child: _buildHistoryCard(delivery),
-              )),
-          
-          const SizedBox(height: 120),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            const CircleAvatar(
-              radius: 24,
-              backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=44'),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Diane Lara',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  'Berlin',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ],
-        ),
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black87),
-            onPressed: () {
-              // TODO: Fetch notifications
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActiveDeliveryCard(DeliveryModel delivery) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE2F6D1), Color(0xFFB1EAA3)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Tracking number', style: TextStyle(fontSize: 14, color: Colors.black87)),
-                  const SizedBox(height: 4),
-                  Text(
-                    delivery.trackingNumber,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
+              Text('PROFILE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+              const SizedBox(height: 4),
+              const Text('My Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+              const SizedBox(height: 24),
+
+              // Identity card
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  delivery.status,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Stack(
-            children: [
-              Container(
-                height: 6,
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(3),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
-              ),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  return Container(
-                    height: 6,
-                    width: constraints.maxWidth * delivery.progress,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF4CAF50),
-                      borderRadius: BorderRadius.circular(3),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey.shade300, width: 1.5),
+                      ),
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Color(0xFFF0F1F5),
+                        child: Icon(Icons.person, size: 30, color: Colors.black54),
+                      ),
                     ),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('From', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  const SizedBox(height: 2),
-                  Text(delivery.fromLocation, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('To', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  const SizedBox(height: 2),
-                  Text(delivery.toLocation, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Arrival date', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  const SizedBox(height: 2),
-                  Text(delivery.arrivalDate, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHistoryCard(DeliveryModel delivery) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Order ${delivery.trackingNumber}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'From ${delivery.fromLocation} to ${delivery.toLocation}',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F1F5),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              delivery.status,
-              style: const TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------
-// 3. FUNCTIONAL SEARCH WIDGET
-// ---------------------------------------------------------
-class SearchWidget extends StatelessWidget {
-  final TextEditingController controller;
-  final Function(String) onSubmitted;
-
-  const SearchWidget({
-    super.key,
-    required this.controller,
-    required this.onSubmitted,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: TextField(
-        controller: controller,
-        onSubmitted: onSubmitted,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'Track your shipment',
-          hintStyle: const TextStyle(color: Colors.black54, fontSize: 15),
-          prefixIcon: const Icon(Icons.search, color: Colors.black54),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 18),
-          suffixIcon: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: GestureDetector(
-              onTap: () {
-                // TODO: Trigger QR Scanner logic here
-                print("QR Scanner tapped");
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4CAF50),
-                  borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(currentUser?.name ?? 'Driver', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black)),
+                          const SizedBox(height: 3),
+                          Text(currentUser?.email ?? '—', style: TextStyle(fontSize: 13, color: Colors.grey.shade600), overflow: TextOverflow.ellipsis),
+                          if (currentUser?.phone != null && currentUser!.phone!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(currentUser!.phone!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+                      child: const Text('DRIVER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54)),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
               ),
-            ),
+
+              const SizedBox(height: 20),
+
+              // Support group
+              _sectionLabel('Support'),
+              const SizedBox(height: 10),
+              _settingsGroup([
+                (Icons.help_outline, 'Help Center'),
+                (Icons.policy_outlined, 'Privacy Policy'),
+              ]),
+
+              const SizedBox(height: 24),
+
+              // Logout
+              GestureDetector(
+                onTap: () async {
+                  await StorageService.deleteToken();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => LoginPage()),
+                      (route) => false,
+                    );
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout, color: Colors.black87, size: 20),
+                      SizedBox(width: 10),
+                      Text('Log Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  Widget _sectionLabel(String text) => Padding(
+    padding: const EdgeInsets.only(left: 4),
+    child: Text(text.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: Colors.grey.shade500)),
+  );
+
+  Widget _settingsGroup(List<(IconData, String)> items) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: items.asMap().entries.map((entry) {
+          final index = entry.key;
+          final (icon, label) = entry.value;
+          final isLast = index == items.length - 1;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                      child: Icon(icon, color: Colors.black87, size: 18),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87))),
+                    const Icon(Icons.chevron_right, size: 18, color: Colors.black38),
+                  ],
+                ),
+              ),
+              if (!isLast) const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF0F1F5)),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
 }
 
-// ---------------------------------------------------------
-// 4. FUNCTIONAL BOTTOM NAV BAR
-// ---------------------------------------------------------
-class CustomBottomNavBar extends StatelessWidget {
+// ─────────────────────────────────────────
+// BOTTOM NAV BAR
+// ─────────────────────────────────────────
+class _BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
-
-  const CustomBottomNavBar({
-    super.key,
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _BottomNavBar({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(40),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            )
-          ]
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildNavItem(icon: Icons.home_outlined, index: 0),
-            _buildNavItem(icon: Icons.inventory_2_outlined, index: 1),
-            _buildNavItem(icon: Icons.map_outlined, index: 2),
-            _buildNavItem(icon: Icons.settings_outlined, index: 3),
+            _navItem(Icons.home_outlined, 0),
+            _navItem(Icons.inventory_2_outlined, 1),
+            _navItem(Icons.map_outlined, 2),
+            _navItem(Icons.person_outline, 3),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem({required IconData icon, required int index}) {
+  Widget _navItem(IconData icon, int index) {
     final isSelected = currentIndex == index;
-    
     return GestureDetector(
       onTap: () => onTap(index),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Icon(
-          icon,
-          color: isSelected ? Colors.black : Colors.white70,
-          size: 26,
-        ),
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, shape: BoxShape.circle),
+        child: Icon(icon, color: isSelected ? Colors.black : Colors.white60, size: 26),
       ),
     );
   }

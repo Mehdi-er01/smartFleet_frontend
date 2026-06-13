@@ -1,28 +1,66 @@
 import 'package:flutter/material.dart';
-import 'client_api_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartfleet_frontend/service/client_repository.dart';
+import 'package:smartfleet_frontend/service/auth_service.dart';
+import 'package:smartfleet_frontend/dto/user_dto.dart';
 import 'order_dto.dart';
 import 'home_tab_page.dart';
-import 'historique_commandes.dart'; // Vérifie bien le nom exact de ton fichier
+import 'historique_commandes.dart';
 import 'suivi_map_page.dart';
 import 'profil_client_page.dart';
 
-class ClientSpace extends StatefulWidget {
+class ClientSpace extends ConsumerStatefulWidget {
   const ClientSpace({super.key});
 
   @override
-  State<ClientSpace> createState() => _ClientSpaceState();
+  ConsumerState<ClientSpace> createState() => _ClientSpaceState();
 }
 
-class _ClientSpaceState extends State<ClientSpace> {
+class _ClientSpaceState extends ConsumerState<ClientSpace> {
   int _currentNavIndex = 0;
-  final ClientApiService _apiService = ClientApiService();
-  late Future<List<OrderDTO>> _ordersFuture;
+  bool _isLoading = true;
+  String? _error;
+  List<OrderDTO> _allOrders = [];
+  UserDto? _currentUser;
 
   @override
   void initState() {
     super.initState();
-    // On charge toutes les commandes une seule fois au démarrage
-    _ordersFuture = _apiService.getTestOrders();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final repository = ref.read(clientRepositoryProvider);
+      final authService = ref.read(authServiceProvider);
+      
+      final user = await authService.getCurrentUser();
+      final orders = await repository.getOrders();
+      
+      if (mounted) {
+        setState(() {
+          _currentUser = user;
+          // Only show orders that belong to the logged-in client
+          if (user != null) {
+            _allOrders = orders.where((o) => o.clientId == user.id).toList();
+          } else {
+            _allOrders = []; // Fallback if user is null
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _onNavTapped(int index) {
@@ -36,76 +74,59 @@ class _ClientSpaceState extends State<ClientSpace> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       extendBody: true,
-      body: SafeArea(
-        bottom: false,
-        child: FutureBuilder<List<OrderDTO>>(
-          future: _ordersFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return Center(child: Text("Erreur de connexion API : ${snapshot.error}"));
-            } else if (!snapshot.hasData) {
-              return const Center(child: Text("Aucune donnée reçue du serveur"));
-            }
-
-            final allOrders = snapshot.data!;
-
-            // 1. CALCUL DE LA DATE D'AUJOURD'HUI (Format: AAAA-MM-JJ)
-            // final now = DateTime.now();
-            // final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-final DateTime now = DateTime.now();
-final String todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-            // 2. FILTRAGE DYNAMIQUE
-            // Page 1 (Aujourd'hui) : Doit être planifiée aujourd'hui ET pas encore livrée
-            // final todayOrders = allOrders.where((o) {
-            //   final isPlannedToday = o.estimatedDeliveryTime != null && 
-            //                          o.estimatedDeliveryTime!.startsWith(todayStr);
-            //   return isPlannedToday && o.status != "DELIVERED";
-            // }).toList();
-            final todayOrders = allOrders.where((o) {
-  final bool isPlannedToday = o.estimatedDeliveryTime != null && 
-                               o.estimatedDeliveryTime!.startsWith(todayStr);
-  return isPlannedToday && o.status != "DELIVERED";
-}).toList();
-
-            // Page 2 (Historique) : Toutes les commandes livrées
-            // final historyOrders = allOrders.where((o) => o.status == "DELIVERED").toList();
-            
-            // // Page 3 (Suivi Map) : La commande en cours de route prioritaire, sinon la première du jour
-            // final OrderDTO? trackingOrder = allOrders.firstWhere(
-            //   (o) => o.status == "IN_PROGRESS",
-            //   orElse: () => todayOrders.isNotEmpty ? todayOrders.first : allOrders.first,
-            // );
-            final historyOrders = allOrders.where((o) {
-  final bool isDelivered = o.status == "DELIVERED";
-  final bool isPastDate = o.estimatedDeliveryTime != null && 
-                           !o.estimatedDeliveryTime!.startsWith(todayStr) && 
-                           DateTime.parse(o.estimatedDeliveryTime!).isBefore(now);
-  return isDelivered || isPastDate;
-}).toList();
-
-// 4. Commande pour le suivi MAP (La première en cours, sinon la première d'aujourd'hui)
-final OrderDTO? trackingOrder = allOrders.firstWhere(
-  (o) => o.status == "IN_PROGRESS",
-  orElse: () => todayOrders.isNotEmpty ? todayOrders.first : allOrders.first,
-);
-
-            return IndexedStack(
-  index: _currentNavIndex,
-  children: [
-    HomeTabPage(activeOrders: todayOrders),                   // Affiche les commandes du jour
-    HistoriqueCommandesPage(history: historyOrders),          // Historique vide si aucune commande n'est livrée/passée
-    SuiviMapPage(activeOrder: trackingOrder),
-    const ProfilClientPage(),
-  ],
-);
-          },
-        ),
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text("Erreur de chargement: $_error"))
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: _buildBody(),
+                ),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentNavIndex,
         onTap: _onNavTapped,
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    final now = DateTime.now();
+
+    // Active = anything not yet delivered/failed
+    final activeOrders = _allOrders
+        .where((o) => o.status != 'DELIVERED' && o.status != 'FAILED' && o.status != 'CANCELLED')
+        .toList();
+
+    // Today's orders = active orders whose estimatedDeliveryTime falls on today
+    final todayOrders = activeOrders.where((o) {
+      if (o.estimatedDeliveryTime == null) return false;
+      try {
+        final dt = DateTime.parse(o.estimatedDeliveryTime!);
+        return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
+
+    // Tracking = prefer IN_TRANSIT/IN_PROGRESS, then any active order
+    final OrderDTO? trackingOrder = activeOrders.cast<OrderDTO?>().firstWhere(
+          (o) => o?.status == 'IN_TRANSIT' || o?.status == 'IN_PROGRESS',
+          orElse: () => activeOrders.isNotEmpty ? activeOrders.first : null,
+        );
+
+    final pages = [
+      HomeTabPage(activeOrders: activeOrders, todayOrders: todayOrders, currentUser: _currentUser),
+      HistoriqueCommandesPage(history: _allOrders),
+      SuiviMapPage(activeOrder: trackingOrder),
+      ProfilClientPage(currentUser: _currentUser),
+    ];
+
+    return SafeArea(
+      bottom: false,
+      child: IndexedStack(
+        index: _currentNavIndex,
+        children: pages,
       ),
     );
   }
@@ -116,17 +137,28 @@ class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
 
-  const CustomBottomNavBar({super.key, required this.currentIndex, required this.onTap});
+  const CustomBottomNavBar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        margin: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(40),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -146,13 +178,17 @@ class CustomBottomNavBar extends StatelessWidget {
     return GestureDetector(
       onTap: () => onTap(index),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        duration: const Duration(milliseconds: 255),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
+          shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: isSelected ? Colors.black : Colors.white70, size: 26),
+        child: Icon(
+          icon,
+          color: isSelected ? Colors.black : Colors.white60,
+          size: 26,
+        ),
       ),
     );
   }

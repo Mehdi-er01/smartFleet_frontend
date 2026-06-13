@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "SmartFleet Light Theme",
+  "name": "SmartFleet Pro Light",
   "metadata": {},
   "sources": {
     "openmaptiles": {
@@ -12,7 +12,7 @@
       "id": "background",
       "type": "background",
       "paint": {
-        "background-color": "#F7F8FA"
+        "background-color": "#F0F4F8"
       }
     },
     {
@@ -21,8 +21,30 @@
       "source": "openmaptiles",
       "source-layer": "park",
       "paint": {
-        "fill-color": "#E2F6D1",
-        "fill-opacity": 0.7
+        "fill-color": "#D4EDBC",
+        "fill-opacity": 0.5
+      }
+    },
+    {
+      "id": "landcover_wood",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landcover",
+      "filter": ["==", "class", "wood"],
+      "paint": {
+        "fill-color": "#C8E6B0",
+        "fill-opacity": 0.4
+      }
+    },
+    {
+      "id": "landcover_grass",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landcover",
+      "filter": ["==", "class", "grass"],
+      "paint": {
+        "fill-color": "#DAEFCE",
+        "fill-opacity": 0.4
       }
     },
     {
@@ -31,7 +53,17 @@
       "source": "openmaptiles",
       "source-layer": "water",
       "paint": {
-        "fill-color": "#BBE2F9"
+        "fill-color": "#A8D5F2"
+      }
+    },
+    {
+      "id": "waterway",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "waterway",
+      "paint": {
+        "line-color": "#A8D5F2",
+        "line-width": 2
       }
     },
     {
@@ -40,8 +72,19 @@
       "source": "openmaptiles",
       "source-layer": "building",
       "paint": {
-        "fill-color": "#E8EAEF",
-        "fill-outline-color": "#DFE1E5"
+        "fill-color": "#E2E4E9",
+        "fill-outline-color": "#D5D8DE"
+      }
+    },
+    {
+      "id": "road_casing_minor",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "minor", "service", "track"]],
+      "paint": {
+        "line-color": "#D6D9DE",
+        "line-width": {"base": 1.2, "stops": [[12, 2], [16, 6]]}
       }
     },
     {
@@ -56,14 +99,36 @@
       }
     },
     {
+      "id": "road_casing_major",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "primary", "secondary", "tertiary"]],
+      "paint": {
+        "line-color": "#C8CCD4",
+        "line-width": {"base": 1.2, "stops": [[10, 3], [16, 10]]}
+      }
+    },
+    {
       "id": "road_major",
       "type": "line",
       "source": "openmaptiles",
       "source-layer": "transportation",
       "filter": ["all", ["in", "class", "primary", "secondary", "tertiary"]],
       "paint": {
-        "line-color": "#FFFFFF",
+        "line-color": "#FFF8E7",
         "line-width": {"base": 1.2, "stops": [[10, 2], [16, 8]]}
+      }
+    },
+    {
+      "id": "road_casing_highway",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "filter": ["all", ["==", "class", "motorway"]],
+      "paint": {
+        "line-color": "#D4A04D",
+        "line-width": {"base": 1.2, "stops": [[8, 2.5], [16, 12]]}
       }
     },
     {
@@ -73,7 +138,7 @@
       "source-layer": "transportation",
       "filter": ["all", ["==", "class", "motorway"]],
       "paint": {
-        "line-color": "#4CAF50",
+        "line-color": "#FFD97A",
         "line-width": {"base": 1.2, "stops": [[8, 1.5], [16, 10]]}
       }
     },
@@ -89,9 +154,26 @@
         "text-size": {"stops": [[8, 14], [16, 22]]}
       },
       "paint": {
-        "text-color": "#333333",
+        "text-color": "#2C3E50",
         "text-halo-color": "#FFFFFF",
         "text-halo-width": 2
+      }
+    },
+    {
+      "id": "place_label_town",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "filter": ["all", ["==", "class", "town"]],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Open Sans Regular"],
+        "text-size": {"stops": [[10, 11], [16, 16]]}
+      },
+      "paint": {
+        "text-color": "#4A6070",
+        "text-halo-color": "#FFFFFF",
+        "text-halo-width": 1.5
       }
     },
     {
@@ -103,10 +185,10 @@
         "text-field": "{name:latin}",
         "symbol-placement": "line",
         "text-font": ["Open Sans Regular"],
-        "text-size": 12
+        "text-size": 11
       },
       "paint": {
-        "text-color": "#767676",
+        "text-color": "#6B7B8D",
         "text-halo-color": "#FFFFFF",
         "text-halo-width": 1.5
       }

@@ -43,23 +43,27 @@ class SubProgramDto {
 
   factory SubProgramDto.fromJson(Map<String, dynamic> json) {
     return SubProgramDto(
-      id: json['id'] as int,
+      id: (json['id'] as num).toInt(),
       subProgramNumber: json['subProgramNumber'] as String? ?? '',
-      deliveryProgramId: json['deliveryProgramId'] as int? ?? 0,
-      driverId: json['driverId'] as int?,
-      vehicleId: json['vehicleId'] as int?,
+      deliveryProgramId: (json['deliveryProgramId'] as num?)?.toInt() ?? 0,
+      driverId: (json['driverId'] as num?)?.toInt(),
+      vehicleId: (json['vehicleId'] as num?)?.toInt(),
       orderIds:
-          (json['orderIds'] as List?)?.map((e) => e as int).toList() ?? [],
+          (json['orderIds'] as List?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          [],
       status: json['status'] as String? ?? 'PENDING',
       polyline: json['polyline'] as String?,
       estimatedDistanceKm: (json['estimatedDistanceKm'] as num?)?.toDouble(),
-      estimatedDurationMinutes: json['estimatedDurationMinutes'] as int?,
+      estimatedDurationMinutes: (json['estimatedDurationMinutes'] as num?)
+          ?.toInt(),
       actualDistanceKm: (json['actualDistanceKm'] as num?)?.toDouble(),
-      actualDurationMinutes: json['actualDurationMinutes'] as int?,
+      actualDurationMinutes: (json['actualDurationMinutes'] as num?)?.toInt(),
       startTime: json['startTime'] as String?,
       endTime: json['endTime'] as String?,
-      totalOrdersCount: json['totalOrdersCount'] as int? ?? 0,
-      approvedOrdersCount: json['approvedOrdersCount'] as int? ?? 0,
+      totalOrdersCount: (json['totalOrdersCount'] as num?)?.toInt() ?? 0,
+      approvedOrdersCount: (json['approvedOrdersCount'] as num?)?.toInt() ?? 0,
     );
   }
 

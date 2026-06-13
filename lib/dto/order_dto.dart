@@ -12,6 +12,8 @@ class OrderDto {
   final String? estimatedDeliveryTime;
   final String? actualDeliveryTime;
   final bool clientApproved;
+  final String? priority;
+  final int? visitSequence;
 
   const OrderDto({
     required this.id,
@@ -27,13 +29,15 @@ class OrderDto {
     this.estimatedDeliveryTime,
     this.actualDeliveryTime,
     this.clientApproved = false,
+    this.priority,
+    this.visitSequence,
   });
 
   factory OrderDto.fromJson(Map<String, dynamic> json) {
     return OrderDto(
-      id: json['id'] as int,
+      id: (json['id'] as num).toInt(),
       orderNumber: json['orderNumber'] as String? ?? '',
-      clientId: json['clientId'] as int?,
+      clientId: (json['clientId'] as num?)?.toInt(),
       weightKg: (json['weightKg'] as num?)?.toDouble() ?? 0,
       volumeM2: (json['volumeM2'] as num?)?.toDouble() ?? 0,
       deliveryLatitude: (json['deliveryLatitude'] as num?)?.toDouble() ?? 0,
@@ -44,6 +48,8 @@ class OrderDto {
       estimatedDeliveryTime: json['estimatedDeliveryTime'] as String?,
       actualDeliveryTime: json['actualDeliveryTime'] as String?,
       clientApproved: json['clientApproved'] as bool? ?? false,
+      priority: json['priority'] as String?,
+      visitSequence: (json['visitSequence'] as num?)?.toInt(),
     );
   }
 
@@ -64,25 +70,46 @@ class OrderDto {
         'estimatedDeliveryTime': estimatedDeliveryTime,
       if (actualDeliveryTime != null) 'actualDeliveryTime': actualDeliveryTime,
       'clientApproved': clientApproved,
+      if (priority != null) 'priority': priority,
+      if (visitSequence != null) 'visitSequence': visitSequence,
     };
   }
 
   /// Creates a copy with optional field overrides
-  OrderDto copyWith({int? id, String? orderNumber}) {
+  OrderDto copyWith({
+    int? id,
+    String? orderNumber,
+    int? clientId,
+    double? weightKg,
+    double? volumeM2,
+    double? deliveryLatitude,
+    double? deliveryLongitude,
+    String? deliveryAddress,
+    String? deliveryDescription,
+    String? status,
+    String? estimatedDeliveryTime,
+    String? actualDeliveryTime,
+    bool? clientApproved,
+    String? priority,
+    int? visitSequence,
+  }) {
     return OrderDto(
       id: id ?? this.id,
       orderNumber: orderNumber ?? this.orderNumber,
-      clientId: clientId,
-      weightKg: weightKg,
-      volumeM2: volumeM2,
-      deliveryLatitude: deliveryLatitude,
-      deliveryLongitude: deliveryLongitude,
-      deliveryAddress: deliveryAddress,
-      deliveryDescription: deliveryDescription,
-      status: status,
-      estimatedDeliveryTime: estimatedDeliveryTime,
-      actualDeliveryTime: actualDeliveryTime,
-      clientApproved: clientApproved,
+      clientId: clientId ?? this.clientId,
+      weightKg: weightKg ?? this.weightKg,
+      volumeM2: volumeM2 ?? this.volumeM2,
+      deliveryLatitude: deliveryLatitude ?? this.deliveryLatitude,
+      deliveryLongitude: deliveryLongitude ?? this.deliveryLongitude,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      deliveryDescription: deliveryDescription ?? this.deliveryDescription,
+      status: status ?? this.status,
+      estimatedDeliveryTime:
+          estimatedDeliveryTime ?? this.estimatedDeliveryTime,
+      actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
+      clientApproved: clientApproved ?? this.clientApproved,
+      priority: priority ?? this.priority,
+      visitSequence: visitSequence ?? this.visitSequence,
     );
   }
 }

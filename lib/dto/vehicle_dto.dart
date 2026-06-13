@@ -27,16 +27,16 @@ class VehicleDto {
 
   factory VehicleDto.fromJson(Map<String, dynamic> json) {
     return VehicleDto(
-      id: json['id'] as int,
+      id: (json['id'] as num).toInt(),
       registrationNumber: json['registrationNumber'] as String? ?? '',
       brand: json['brand'] as String? ?? '',
       model: json['model'] as String? ?? '',
-      year: json['year'] as int? ?? 0,
+      year: (json['year'] as num?)?.toInt() ?? 0,
       maxVolumeM2: (json['maxVolumeM2'] as num?)?.toDouble() ?? 0.0,
       maxPayloadKg: (json['maxPayloadKg'] as num?)?.toDouble() ?? 0.0,
       currentLoadM2: (json['currentLoadM2'] as num?)?.toDouble() ?? 0.0,
       currentLoadKg: (json['currentLoadKg'] as num?)?.toDouble() ?? 0.0,
-      managerId: json['managerId'] as int?,
+      managerId: (json['managerId'] as num?)?.toInt(),
       active: json['active'] as bool? ?? true,
     );
   }

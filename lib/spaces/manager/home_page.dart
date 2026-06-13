@@ -1,36 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartfleet_frontend/dto/delivery_program_dto.dart';
+import 'package:smartfleet_frontend/dto/driver_dto.dart';
+import 'package:smartfleet_frontend/dto/user_dto.dart';
+import 'package:smartfleet_frontend/dto/vehicle_dto.dart';
+import 'package:smartfleet_frontend/login_page.dart';
+import 'package:smartfleet_frontend/service/auth_service.dart';
+import 'package:smartfleet_frontend/service/dispatch_repository.dart';
+import 'package:smartfleet_frontend/service/fleet_repository.dart';
+import 'package:smartfleet_frontend/service/storage_service.dart';
 import 'package:smartfleet_frontend/spaces/manager/dispatch_creation_page.dart';
 import 'package:smartfleet_frontend/spaces/manager/map_page.dart';
 import 'package:smartfleet_frontend/spaces/manager/ressources_page.dart';
 
-class HomePage extends StatefulWidget {
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends ConsumerState<HomePage> {
   int _currentIndex = 0;
+  UserDto? _currentUser;
 
-  // The Manager's Page Views
-  final List<Widget> _pages = const [
-    ManagerDashboardView(), // The redesigned dashboard
-    DispatchCreationPage(),
-    MapPage(),
-    ResourcesPage(),
+  @override
+  void initState() {
+    super.initState();
+    _fetchUser();
+  }
 
-  ];
+  Future<void> _fetchUser() async {
+    try {
+      final user = await ref.read(authServiceProvider).getCurrentUser();
+      if (mounted) setState(() => _currentUser = user);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
+    final pages = <Widget>[
+      ManagerDashboardView(
+        onNavigate: (i) => setState(() => _currentIndex = i),
+      ),
+      const DispatchCreationPage(),
+      const MapPage(),
+      const ResourcesPage(),
+      ManagerProfilePage(currentUser: _currentUser),
+    ];
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
-      extendBody: true, // Allows content to scroll behind the floating nav bar
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      extendBody: true,
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -40,53 +61,96 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ---------------------------------------------------------
-// MANAGER DASHBOARD VIEW
+// MANAGER DASHBOARD — Real metrics, black/white design
 // ---------------------------------------------------------
-class ManagerDashboardView extends StatelessWidget {
-  const ManagerDashboardView({super.key});
+class ManagerDashboardView extends ConsumerStatefulWidget {
+  final void Function(int index)? onNavigate;
+  const ManagerDashboardView({super.key, this.onNavigate});
+
+  @override
+  ConsumerState<ManagerDashboardView> createState() =>
+      _ManagerDashboardViewState();
+}
+
+class _ManagerDashboardViewState extends ConsumerState<ManagerDashboardView> {
+  bool _loading = true;
+  List<DriverDto> _myDrivers = [];
+  List<VehicleDto> _vehicles = [];
+  List<DeliveryProgramDto> _programs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final fleet = ref.read(fleetRepositoryProvider);
+      final dispatch = ref.read(dispatchRepositoryProvider);
+      final drivers = await fleet.getMyDrivers();
+      final vehicles = await fleet.getVehicles();
+      final programs = await dispatch.getPrograms();
+      if (mounted) {
+        setState(() {
+          _myDrivers = drivers;
+          _vehicles = vehicles;
+          _programs = programs;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ── Computed metrics ──
+  int get _activeVehicles => _vehicles.where((v) => v.active).length;
+  int get _inactiveVehicles => _vehicles.length - _activeVehicles;
+  int get _totalDrivers => _myDrivers.length;
+  int get _pendingPrograms =>
+      _programs.where((p) => p.status == 'PENDING').length;
+  int get _inProgressPrograms => _programs
+      .where((p) => p.status == 'IN_PROGRESS' || p.status == 'OPTIMIZED')
+      .length;
+  int get _completedPrograms =>
+      _programs.where((p) => p.status == 'COMPLETED').length;
+  int get _totalOrders =>
+      _programs.fold<int>(0, (sum, p) => sum + p.orders.length);
+  int get _activeOrders => _programs
+      .where((p) => p.status != 'COMPLETED' && p.status != 'CANCELLED')
+      .fold<int>(0, (sum, p) => sum + p.orders.length);
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 16),
-            _buildHeader(),
-            const SizedBox(height: 24),
-            
-            // Hero Status Card (Matches Driver Style)
-            _buildFleetSummaryCard(),
-            
-            const SizedBox(height: 32),
-            _buildSectionHeader('Live Fleet', 'View Map'),
-            const SizedBox(height: 12),
-            _buildHorizontalFleetList(),
-
-            const SizedBox(height: 32),
-            const Text(
-              'Issues requiring attention',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: Colors.black),
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    _buildHeader(),
+                    const SizedBox(height: 24),
+                    _buildMetricGrid(),
+                    const SizedBox(height: 24),
+                    _buildFleetOverview(),
+                    const SizedBox(height: 24),
+                    _buildProgramOverview(),
+                    const SizedBox(height: 24),
+                    _buildQuickActions(context),
+                    const SizedBox(height: 120),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
-            _buildActionAlert(
-              title: 'Delayed: TRK-042',
-              subtitle: 'Ahmed R. stuck in Settat traffic',
-              isUrgent: true,
-            ),
-            _buildActionAlert(
-              title: 'Failed Delivery',
-              subtitle: 'Order #7620937 - Recipient not home',
-              isUrgent: false,
-            ),
-            
-            const SizedBox(height: 120), // Bottom padding for nav bar
-          ],
-        ),
-      ),
     );
   }
 
@@ -94,188 +158,568 @@ class ManagerDashboardView extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'SMARTFLEET MANAGER',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: Colors.black54),
+              'DASHBOARD',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Colors.grey.shade500,
+              ),
             ),
-            Text(
-              'Operations',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.black),
+            const SizedBox(height: 4),
+            const Text(
+              'Fleet Overview',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
             ),
           ],
         ),
-        Container(
-          height: 48,
-          width: 48,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade200),
+        GestureDetector(
+          onTap: _load,
+          child: Container(
+            height: 44,
+            width: 44,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: const Icon(Icons.refresh, color: Colors.black87, size: 20),
           ),
-          child: const Icon(Icons.tune, color: Colors.black),
-        )
+        ),
       ],
     );
   }
 
-  Widget _buildFleetSummaryCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE2F6D1), Color(0xFFB1EAA3)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+  Widget _buildMetricGrid() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _metricCard(
+                icon: Icons.person_outline,
+                label: 'Drivers',
+                value: '$_totalDrivers',
+                sub: '$_activeVehicles active vehicles',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricCard(
+                icon: Icons.local_shipping_outlined,
+                label: 'Vehicles',
+                value: '${_vehicles.length}',
+                sub: '$_inactiveVehicles inactive',
+              ),
+            ),
+          ],
         ),
-        borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4CAF50).withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _metricCard(
+                icon: Icons.assignment_outlined,
+                label: 'Programs',
+                value: '${_programs.length}',
+                sub: '$_pendingPrograms pending',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _metricCard(
+                icon: Icons.shopping_bag_outlined,
+                label: 'Orders',
+                value: '$_totalOrders',
+                sub: '$_activeOrders active',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _metricCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String sub,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Total Efficiency', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w500)),
-          const Text('94.2%', style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: Colors.black)),
-          const SizedBox(height: 24),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatItem('12', 'Active Trucks'),
-              _buildStatItem('145', 'Pending'),
-              _buildStatItem('89', 'Completed'),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 18, color: Colors.black87),
+              ),
+              const Spacer(),
+              Text(
+                sub,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              ),
             ],
-          )
+          ),
+          const SizedBox(height: 14),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: Colors.black,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade600,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem(String val, String label) {
+  Widget _buildFleetOverview() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Fleet Status',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          _statusRow(
+            'Active Vehicles',
+            _activeVehicles,
+            _vehicles.length,
+            Colors.green,
+          ),
+          const SizedBox(height: 10),
+          _statusRow(
+            'Inactive Vehicles',
+            _inactiveVehicles,
+            _vehicles.length,
+            Colors.grey,
+          ),
+          const SizedBox(height: 10),
+          _statusRow(
+            'My Drivers',
+            _totalDrivers,
+            _totalDrivers > 0 ? _totalDrivers : 1,
+            Colors.black,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusRow(String label, int count, int total, Color color) {
+    final ratio = total > 0 ? count / total : 0.0;
+    return Row(
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+          ),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 6,
+              backgroundColor: Colors.grey.shade100,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '$count',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            textAlign: TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgramOverview() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Delivery Programs',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _programStat('Pending', _pendingPrograms, Colors.orange),
+              _programStat('In Progress', _inProgressPrograms, Colors.blue),
+              _programStat('Completed', _completedPrograms, Colors.green),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _programStat(String label, int count, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(val, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-      ],
-    );
-  }
-
-  Widget _buildSectionHeader(String title, String action) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-        Text(action, style: const TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildHorizontalFleetList() {
-    return SizedBox(
-      height: 160,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _buildFleetCard('Ahmed R.', 'TRK-042', 0.85),
-          _buildFleetCard('Fatima Z.', 'TRK-019', 0.35),
-          _buildFleetCard('Youssef B.', 'TRK-088', 0.15),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFleetCard(String name, String id, double progress) {
-    return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                height: 50,
-                width: 50,
-                child: CircularProgressIndicator(
-                  value: progress,
-                  strokeWidth: 6,
-                  backgroundColor: const Color(0xFFF0F1F5),
-                  color: const Color(0xFF4CAF50),
-                ),
+        Text(
+          'Quick Actions',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _actionCard(
+                Icons.add_circle_outline,
+                'New Dispatch',
+                'Create a delivery program',
+                () => widget.onNavigate?.call(1),
               ),
-              const Icon(Icons.person, size: 20),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          Text(id, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        ],
-      ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _actionCard(
+                Icons.local_shipping_outlined,
+                'Fleet',
+                'Manage drivers & vehicles',
+                () => widget.onNavigate?.call(3),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
-  Widget _buildActionAlert({required String title, required String subtitle, required bool isUrgent}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: isUrgent ? const Color(0xFFFFEBEE) : const Color(0xFFF0F1F5),
-              shape: BoxShape.circle,
+  Widget _actionCard(
+    IconData icon,
+    String title,
+    String subtitle,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Colors.white, size: 24),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
-            child: Icon(
-              isUrgent ? Icons.warning_amber_rounded : Icons.info_outline,
-              color: isUrgent ? Colors.red : Colors.black45,
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withOpacity(0.6),
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: Colors.grey),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------
-// CUSTOM FLOATING BOTTOM NAV BAR (Shared with Driver App)
+// MANAGER PROFILE PAGE
+// ---------------------------------------------------------
+class ManagerProfilePage extends StatelessWidget {
+  final UserDto? currentUser;
+  const ManagerProfilePage({super.key, this.currentUser});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
+      body: SafeArea(
+        bottom: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('PROFILE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+              const SizedBox(height: 4),
+              const Text('My Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+              const SizedBox(height: 24),
+
+              // Identity card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey.shade300, width: 1.5),
+                      ),
+                      child: const CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Color(0xFFF0F1F5),
+                        child: Icon(Icons.person, size: 30, color: Colors.black54),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            currentUser?.name ?? 'Manager',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            currentUser?.email ?? '—',
+                            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (currentUser?.phone != null && currentUser!.phone!.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              currentUser!.phone!,
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: const Text('MANAGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54)),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              _sectionLabel('Account Settings'),
+              const SizedBox(height: 10),
+              _settingsGroup([
+                (Icons.person_outline, 'Personal Information'),
+                (Icons.business_outlined, 'Company Details'),
+                (Icons.notifications_outlined, 'Notifications'),
+              ]),
+
+              const SizedBox(height: 20),
+
+              _sectionLabel('Support'),
+              const SizedBox(height: 10),
+              _settingsGroup([
+                (Icons.help_outline, 'Help Center'),
+                (Icons.policy_outlined, 'Privacy Policy'),
+              ]),
+
+              const SizedBox(height: 24),
+
+              // Logout
+              GestureDetector(
+                onTap: () async {
+                  await StorageService.deleteToken();
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => LoginPage()),
+                      (route) => false,
+                    );
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout, color: Colors.black87, size: 20),
+                      SizedBox(width: 10),
+                      Text('Log Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) => Padding(
+    padding: const EdgeInsets.only(left: 4),
+    child: Text(text.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: Colors.grey.shade500)),
+  );
+
+  Widget _settingsGroup(List<(IconData, String)> items) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: items.asMap().entries.map((entry) {
+          final index = entry.key;
+          final (icon, label) = entry.value;
+          final isLast = index == items.length - 1;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                      child: Icon(icon, color: Colors.black87, size: 18),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87))),
+                    const Icon(Icons.chevron_right, size: 18, color: Colors.black38),
+                  ],
+                ),
+              ),
+              if (!isLast) const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF0F1F5)),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// CUSTOM FLOATING BOTTOM NAV BAR
 // ---------------------------------------------------------
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
 
-  const CustomBottomNavBar({super.key, required this.currentIndex, required this.onTap});
+  const CustomBottomNavBar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -287,7 +731,11 @@ class CustomBottomNavBar extends StatelessWidget {
           color: Colors.black,
           borderRadius: BorderRadius.circular(40),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
         child: Row(
@@ -297,6 +745,7 @@ class CustomBottomNavBar extends StatelessWidget {
             _navItem(Icons.assignment, 1),
             _navItem(Icons.map_outlined, 2),
             _navItem(Icons.cases_rounded, 3),
+            _navItem(Icons.person_outline, 4),
           ],
         ),
       ),
@@ -308,7 +757,7 @@ class CustomBottomNavBar extends StatelessWidget {
     return GestureDetector(
       onTap: () => onTap(index),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 255),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white : Colors.transparent,

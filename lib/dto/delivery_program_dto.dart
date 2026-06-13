@@ -28,9 +28,9 @@ class DeliveryProgramDto {
 
   factory DeliveryProgramDto.fromJson(Map<String, dynamic> json) {
     return DeliveryProgramDto(
-      id: json['id'] as int,
+      id: (json['id'] as num).toInt(),
       programNumber: json['programNumber'] as String? ?? '',
-      managerId: json['managerId'] as int?,
+      managerId: (json['managerId'] as num?)?.toInt(),
       status: json['status'] as String? ?? 'PENDING',
       orders:
           (json['orders'] as List?)

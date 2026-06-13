@@ -105,7 +105,10 @@ class _DriversTabState extends ConsumerState<_DriversTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        SnackbarService.showError('Failed to load drivers: $e');
+      }
     }
   }
 
@@ -130,15 +133,23 @@ class _DriversTabState extends ConsumerState<_DriversTab> {
   }
 
   Future<void> _assign(DriverDto d) async {
-    await ref.read(fleetRepositoryProvider).assignDriver(d.id);
-    SnackbarService.showSuccess('${d.name} assigned to your fleet');
-    _load();
+    try {
+      await ref.read(fleetRepositoryProvider).assignDriver(d.id);
+      SnackbarService.showSuccess('${d.name} assigned to your fleet');
+      _load();
+    } catch (e) {
+      SnackbarService.showError('Failed to assign driver: $e');
+    }
   }
 
   Future<void> _unassign(DriverDto d) async {
-    await ref.read(fleetRepositoryProvider).unassignDriver(d.id);
-    SnackbarService.showSuccess('${d.name} removed from your fleet');
-    _load();
+    try {
+      await ref.read(fleetRepositoryProvider).unassignDriver(d.id);
+      SnackbarService.showSuccess('${d.name} removed from your fleet');
+      _load();
+    } catch (e) {
+      SnackbarService.showError('Failed to remove driver: $e');
+    }
   }
 
   @override
@@ -244,118 +255,265 @@ class _DriversTabState extends ConsumerState<_DriversTab> {
 
   Widget _buildDriverCard(DriverDto d) {
     final isMyDriver = _section == _DriverSection.myDrivers;
-    final availColor = d.available ? Colors.green : Colors.orange;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              shape: BoxShape.circle,
+    final isAvail = d.available;
+    final availColor = isAvail == true
+        ? Colors.green
+        : isAvail == false
+        ? Colors.orange
+        : Colors.grey;
+    return GestureDetector(
+      onTap: () => _showDriverDetail(d),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            // Avatar
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person, color: Colors.black54),
             ),
-            child: const Icon(Icons.person, color: Colors.black54),
-          ),
-          const SizedBox(width: 14),
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        d.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: availColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        d.available ? 'AVAILABLE' : 'BUSY',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: availColor,
+            const SizedBox(width: 14),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          d.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                    if (!d.active) ...[
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.12),
+                          color: availColor.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text(
-                          'INACTIVE',
+                        child: Text(
+                          isAvail == true
+                              ? 'AVAILABLE'
+                              : isAvail == false
+                              ? 'BUSY'
+                              : 'UNKNOWN',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: Colors.grey,
+                            color: availColor,
                           ),
                         ),
                       ),
+                      if (!d.active) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'INACTIVE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  d.email,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                ),
-                Text(
-                  d.phone,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                ),
-                if (d.licenseNumber != null)
+                  ),
+                  const SizedBox(height: 4),
                   Text(
-                    'License: ${d.licenseNumber}',
+                    d.email,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                  Text(
+                    d.phone,
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                   ),
+                  if (d.licenseNumber != null)
+                    Text(
+                      'License: ${d.licenseNumber}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Action
+            if (isMyDriver)
+              _actionBtn(
+                Icons.person_remove,
+                'Remove',
+                Colors.red.shade700,
+                () => _unassign(d),
+              )
+            else
+              _actionBtn(
+                Icons.person_add,
+                'Assign',
+                Colors.black,
+                () => _assign(d),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDriverDetail(DriverDto d) {
+    final isMyDriver = _section == _DriverSection.myDrivers;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    size: 28,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        d.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        d.email,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
-          ),
-          // Action
-          if (isMyDriver)
-            _actionBtn(
-              Icons.person_remove,
-              'Remove',
-              Colors.red.shade700,
-              () => _unassign(d),
-            )
-          else
-            _actionBtn(
-              Icons.person_add,
-              'Assign',
-              Colors.black,
-              () => _assign(d),
+            const SizedBox(height: 20),
+            Divider(color: Colors.grey.shade200),
+            const SizedBox(height: 12),
+            _detailRow('Phone', d.phone),
+            _detailRow('Role', d.role ?? 'DRIVER'),
+            _detailRow('Status', d.active ? 'Active' : 'Inactive'),
+            _detailRow(
+              'Availability',
+              d.available == true
+                  ? 'Available'
+                  : d.available == false
+                  ? 'Busy'
+                  : 'Unknown',
             ),
+            if (d.licenseNumber != null)
+              _detailRow('License', d.licenseNumber!),
+            if (d.licenseExpiry != null)
+              _detailRow('License Expiry', d.licenseExpiry!),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  if (isMyDriver) {
+                    _unassign(d);
+                  } else {
+                    _assign(d);
+                  }
+                },
+                icon: Icon(
+                  isMyDriver ? Icons.person_remove : Icons.person_add,
+                  size: 18,
+                ),
+                label: Text(
+                  isMyDriver ? 'Remove from Fleet' : 'Assign to Fleet',
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isMyDriver
+                      ? Colors.red.shade700
+                      : Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+          ),
         ],
       ),
     );
@@ -403,7 +561,10 @@ class _VehiclesTabState extends ConsumerState<_VehiclesTab> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        SnackbarService.showError('Failed to load vehicles: $e');
+      }
     }
   }
 
@@ -427,14 +588,18 @@ class _VehiclesTabState extends ConsumerState<_VehiclesTab> {
   }
 
   Future<void> _toggleActive(VehicleDto v) async {
-    final newActive = !v.active;
-    await ref
-        .read(fleetRepositoryProvider)
-        .toggleVehicleActive(v.id, newActive);
-    SnackbarService.showSuccess(
-      '${v.brand} ${v.model} ${newActive ? 'activated' : 'deactivated'}',
-    );
-    _load();
+    try {
+      final newActive = !v.active;
+      await ref
+          .read(fleetRepositoryProvider)
+          .toggleVehicleActive(v.id, newActive);
+      SnackbarService.showSuccess(
+        '${v.brand} ${v.model} ${newActive ? 'activated' : 'deactivated'}',
+      );
+      _load();
+    } catch (e) {
+      SnackbarService.showError('Failed to toggle vehicle: $e');
+    }
   }
 
   Future<void> _openForm({VehicleDto? vehicle}) async {
@@ -443,15 +608,19 @@ class _VehiclesTabState extends ConsumerState<_VehiclesTab> {
       builder: (ctx) => _VehicleFormDialog(existing: vehicle),
     );
     if (result != null) {
-      final repo = ref.read(fleetRepositoryProvider);
-      if (vehicle == null) {
-        await repo.createVehicle(result);
-        SnackbarService.showSuccess('Vehicle created');
-      } else {
-        await repo.updateVehicle(vehicle.id, result);
-        SnackbarService.showSuccess('Vehicle updated');
+      try {
+        final repo = ref.read(fleetRepositoryProvider);
+        if (vehicle == null) {
+          await repo.createVehicle(result);
+          SnackbarService.showSuccess('Vehicle created');
+        } else {
+          await repo.updateVehicle(vehicle.id, result);
+          SnackbarService.showSuccess('Vehicle updated');
+        }
+        _load();
+      } catch (e) {
+        SnackbarService.showError('Failed to save vehicle: $e');
       }
-      _load();
     }
   }
 
@@ -537,113 +706,259 @@ class _VehiclesTabState extends ConsumerState<_VehiclesTab> {
 
   Widget _buildVehicleCard(VehicleDto v) {
     final statusColor = v.active ? Colors.green : Colors.grey;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          // Icon
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: () => _showVehicleDetail(v),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.local_shipping_outlined,
+                color: Colors.black54,
+              ),
             ),
-            child: const Icon(
-              Icons.local_shipping_outlined,
-              color: Colors.black54,
-            ),
-          ),
-          const SizedBox(width: 14),
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        '${v.brand} ${v.model}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+            const SizedBox(width: 14),
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${v.brand} ${v.model}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          v.active ? 'ACTIVE' : 'INACTIVE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        v.active ? 'ACTIVE' : 'INACTIVE',
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Reg: ${v.registrationNumber}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        '${v.maxPayloadKg.toStringAsFixed(0)} kg',
                         style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      const Text('  •  ', style: TextStyle(color: Colors.grey)),
+                      Text(
+                        '${v.maxVolumeM2.toStringAsFixed(0)} m²',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      const Text('  •  ', style: TextStyle(color: Colors.grey)),
+                      Text(
+                        '${v.year}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Actions
+            Column(
+              children: [
+                _iconOnlyBtn(Icons.edit_outlined, () => _openForm(vehicle: v)),
                 const SizedBox(height: 4),
-                Text(
-                  'Reg: ${v.registrationNumber}',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      '${v.maxPayloadKg.toStringAsFixed(0)} kg',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    const Text('  •  ', style: TextStyle(color: Colors.grey)),
-                    Text(
-                      '${v.maxVolumeM2.toStringAsFixed(0)} m²',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    const Text('  •  ', style: TextStyle(color: Colors.grey)),
-                    Text(
-                      '${v.year}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
+                _iconOnlyBtn(
+                  v.active ? Icons.toggle_on : Icons.toggle_off,
+                  () => _toggleActive(v),
+                  color: v.active ? Colors.green : Colors.grey,
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showVehicleDetail(VehicleDto v) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.local_shipping_outlined,
+                    size: 28,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${v.brand} ${v.model}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        v.registrationNumber,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Divider(color: Colors.grey.shade200),
+            const SizedBox(height: 12),
+            _detailRow('Registration', v.registrationNumber),
+            _detailRow('Brand / Model', '${v.brand} ${v.model}'),
+            _detailRow('Year', '${v.year}'),
+            _detailRow(
+              'Max Payload',
+              '${v.maxPayloadKg.toStringAsFixed(0)} kg',
+            ),
+            _detailRow('Max Volume', '${v.maxVolumeM2.toStringAsFixed(0)} m²'),
+            _detailRow(
+              'Current Load',
+              '${v.currentLoadKg.toStringAsFixed(0)} kg / ${v.currentLoadM2.toStringAsFixed(0)} m²',
+            ),
+            _detailRow('Status', v.active ? 'Active' : 'Inactive'),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _openForm(vehicle: v);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _toggleActive(v);
+                    },
+                    icon: Icon(
+                      v.active ? Icons.toggle_off : Icons.toggle_on,
+                      size: 18,
+                    ),
+                    label: Text(v.active ? 'Deactivate' : 'Activate'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: v.active ? Colors.grey : Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            ),
           ),
-          // Actions
-          Column(
-            children: [
-              _iconOnlyBtn(Icons.edit_outlined, () => _openForm(vehicle: v)),
-              const SizedBox(height: 4),
-              _iconOnlyBtn(
-                v.active ? Icons.toggle_on : Icons.toggle_off,
-                () => _toggleActive(v),
-                color: v.active ? Colors.green : Colors.grey,
-              ),
-            ],
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),

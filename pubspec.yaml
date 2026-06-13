@@ -29,6 +29,9 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   dio: ^5.9.2
+  csv: ^6.0.0
+  excel: ^4.0.6
+  file_picker: ^8.1.4
   flutter:
     sdk: flutter
   flutter_map: ^8.3.0
@@ -37,6 +40,7 @@ dependencies:
   latlong2: ^0.9.1
   vector_map_tiles: ^9.0.0-beta.8
   vector_tile_renderer: ^6.0.0
+  geolocator: ^14.0.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

@@ -135,7 +135,7 @@ class _MapPageState extends ConsumerState<MapPage> {
     }
 
     final stops = _stopPoints;
-    final pendingStops = _stopOrders.where((o) => o.status != 'DELIVERED' && o.status != 'FAILED').length;
+    final pendingStops = _stopOrders.where((o) => o.status != 'DELIVERED' && o.status != 'REJECTED' && o.status != 'CANCELLED').length;
 
     return Scaffold(
       body: Stack(
@@ -177,7 +177,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                       orElse: () => _stopOrders[i],
                     );
                     final isDelivered = order.status == 'DELIVERED';
-                    final isFailed = order.status == 'FAILED';
+                    final isFailed = order.status == 'REJECTED' || order.status == 'CANCELLED';
                     return Marker(
                       point: point,
                       width: 56,

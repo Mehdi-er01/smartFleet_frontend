@@ -411,8 +411,11 @@ class _ActiveCard extends StatelessWidget {
 
   (String, Color) _statusStyle(String status) {
     switch (status) {
-      case 'IN_PROGRESS': return ('IN PROGRESS', Colors.orange);
+      case 'IN_TRANSIT': return ('IN TRANSIT', Colors.orange);
+      case 'ASSIGNED': return ('ASSIGNED', Colors.blue);
       case 'COMPLETED': return ('COMPLETED', Colors.green);
+      case 'FAILED': return ('FAILED', Colors.red);
+      case 'CANCELLED': return ('CANCELLED', Colors.red);
       case 'PENDING': return ('PENDING', Colors.grey);
       default: return (status, Colors.grey);
     }

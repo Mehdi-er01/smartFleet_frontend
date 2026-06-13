@@ -68,6 +68,8 @@ class ApiClient {
               ),
             );
           }
+          // Forward other errors so the request futures complete.
+          return handler.next(error);
         },
       ),
     );

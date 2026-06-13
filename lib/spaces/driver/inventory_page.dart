@@ -60,7 +60,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
   }
 
   int get _pendingCount => 
-      _manifest.where((p) => p.status != 'DELIVERED' && p.status != 'FAILED').length;
+      _manifest.where((p) => p.status != 'DELIVERED' && p.status != 'REJECTED' && p.status != 'CANCELLED').length;
 
   Future<void> _updateStatus(OrderDto package, String newStatus) async {
     try {
@@ -224,7 +224,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
 
   Widget _buildPackageCard(OrderDto package) {
     final isDelivered = package.status == 'DELIVERED';
-    final isFailed = package.status == 'FAILED';
+    final isFailed = package.status == 'REJECTED' || package.status == 'CANCELLED';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -306,7 +306,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => _updateStatus(package, 'FAILED'),
+                            onPressed: () => _updateStatus(package, 'REJECTED'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.red.shade50,
                               foregroundColor: Colors.red,
@@ -355,12 +355,13 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
         bgColor = const Color(0xFFE8F5E9);
         textColor = const Color(0xFF2E7D32);
         break;
-      case 'FAILED':
+      case 'REJECTED':
+      case 'CANCELLED':
         bgColor = const Color(0xFFFFEBEE);
         textColor = const Color(0xFFC62828);
         break;
       case 'IN_TRANSIT':
-      case 'IN_PROGRESS':
+      case 'ARRIVING_SOON':
         bgColor = Colors.black;
         textColor = Colors.white;
         break;

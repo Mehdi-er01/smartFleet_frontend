@@ -17,10 +17,15 @@ class DriverRepository {
       }
       return null;
     } catch (e) {
-      if (e is DioException && e.response?.statusCode == 404) {
+      // 404 = no active subprogram (normal case), other errors = return null gracefully
+      if (e is DioException && (e.response?.statusCode == 404 || e.response?.statusCode == 403)) {
         return null;
       }
-      throw Exception('Failed to get active subprogram: $e');
+      // Re-throw only for non-network errors so we don't silently swallow real bugs
+      if (e is DioException && e.type == DioExceptionType.connectionError) {
+        throw Exception('Cannot reach server. Check your connection.');
+      }
+      return null;
     }
   }
 
@@ -28,15 +33,21 @@ class DriverRepository {
     try {
       var response = await _apiClient.get('/subprograms/my-subprograms');
       if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
-        List<dynamic> data = response.data;
-        return data.map((json) => SubProgramDto.fromJson(json)).toList();
+        final data = response.data;
+        if (data is List) {
+          return data.map((json) => SubProgramDto.fromJson(json as Map<String, dynamic>)).toList();
+        }
+        return [];
       }
       return [];
     } catch (e) {
-      if (e is DioException && e.response?.statusCode == 404) {
+      if (e is DioException && (e.response?.statusCode == 404 || e.response?.statusCode == 403)) {
         return [];
       }
-      throw Exception('Failed to get subprograms: $e');
+      if (e is DioException && e.type == DioExceptionType.connectionError) {
+        throw Exception('Cannot reach server. Check your connection.');
+      }
+      return [];
     }
   }
 

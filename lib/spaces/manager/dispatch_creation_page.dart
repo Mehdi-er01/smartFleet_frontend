@@ -11,6 +11,7 @@ import 'package:smartfleet_frontend/dto/sub_program_dto.dart';
 import 'package:smartfleet_frontend/service/dispatch_repository.dart';
 import 'package:smartfleet_frontend/service/geocoding_service.dart';
 import 'package:smartfleet_frontend/service/snackbar_service.dart';
+import 'package:smartfleet_frontend/service/fleet_repository.dart';
 
 // ═══════════════════════════════════════════════════════════
 // DISPATCH PAGE — List / Detail / Create
@@ -48,10 +49,80 @@ class _DispatchCreationPageState extends ConsumerState<DispatchCreationPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final list = await ref.read(dispatchRepositoryProvider).getPrograms();
+      final dispatch = ref.read(dispatchRepositoryProvider);
+      final fleet = ref.read(fleetRepositoryProvider);
+
+      // Fetch programs, drivers and vehicles in parallel and enrich sub-programs
+      final results = await Future.wait([
+        dispatch.getPrograms(),
+        fleet.getMyDrivers(),
+        fleet.getVehicles(),
+      ]);
+
+      final programs = results[0] as List<DeliveryProgramDto>;
+      final drivers = results[1] as List;
+      final vehicles = results[2] as List;
+
+      final driversById = <int, dynamic>{};
+      for (final d in drivers) {
+        try {
+          driversById[(d.id as int)] = d;
+        } catch (_) {}
+      }
+      final vehiclesById = <int, dynamic>{};
+      for (final v in vehicles) {
+        try {
+          vehiclesById[(v.id as int)] = v;
+        } catch (_) {}
+      }
+
+      final enriched = programs.map((p) {
+        final enrichedSubs = p.subPrograms.map((sp) {
+          final driverName = sp.driverId != null && driversById.containsKey(sp.driverId)
+              ? driversById[sp.driverId].name
+              : null;
+          final vehicleReg = sp.vehicleId != null && vehiclesById.containsKey(sp.vehicleId)
+              ? vehiclesById[sp.vehicleId].registrationNumber
+              : null;
+          return SubProgramDto(
+            id: sp.id,
+            subProgramNumber: sp.subProgramNumber,
+            deliveryProgramId: sp.deliveryProgramId,
+            driverId: sp.driverId,
+            vehicleId: sp.vehicleId,
+            orderIds: sp.orderIds,
+            status: sp.status,
+            polyline: sp.polyline,
+            estimatedDistanceKm: sp.estimatedDistanceKm,
+            estimatedDurationMinutes: sp.estimatedDurationMinutes,
+            actualDistanceKm: sp.actualDistanceKm,
+            actualDurationMinutes: sp.actualDurationMinutes,
+            startTime: sp.startTime,
+            endTime: sp.endTime,
+            totalOrdersCount: sp.totalOrdersCount,
+            approvedOrdersCount: sp.approvedOrdersCount,
+            driverName: driverName,
+            vehicleRegistration: vehicleReg,
+          );
+        }).toList();
+
+        return DeliveryProgramDto(
+          id: p.id,
+          programNumber: p.programNumber,
+          managerId: p.managerId,
+          status: p.status,
+          orders: p.orders,
+          subPrograms: enrichedSubs,
+          plannedDate: p.plannedDate,
+          executionDate: p.executionDate,
+          completionDate: p.completionDate,
+          notes: p.notes,
+        );
+      }).toList();
+
       if (mounted) {
         setState(() {
-          _programs = list;
+          _programs = enriched;
           _loading = false;
         });
       }

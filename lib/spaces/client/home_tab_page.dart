@@ -103,6 +103,41 @@ class HomeTabPage extends StatelessWidget {
     );
   }
 
+  // Widget _buildEmptyState() {
+  //   return Container(
+  //     width: double.infinity,
+  //     padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(24),
+  //       border: Border.all(color: Colors.black.withOpacity(0.04)),
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: Colors.black.withOpacity(0.015),
+  //           blurRadius: 10,
+  //           offset: const Offset(0, 4),
+  //         ),
+  //       ],
+  //     ),
+  //     child: Column(
+  //       mainAxisSize: MainAxisSize.min,
+  //       children: [
+  //         Icon(Icons.inbox_outlined, size: 48, color: Colors.grey.shade300),
+  //         const SizedBox(height: 16),
+  //         const Text(
+  //           "Aucune livraison prévue pour aujourd'hui.",
+  //           textAlign: TextAlign.center,
+  //           style: TextStyle(
+  //             color: Color(0xFF64748B),
+  //             fontSize: 15,
+  //             fontWeight: FontWeight.w500,
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
   Widget _buildHeader() {
     final hour = DateTime.now().hour;
     final salutation = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';

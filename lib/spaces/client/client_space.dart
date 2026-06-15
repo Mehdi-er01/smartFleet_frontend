@@ -37,10 +37,10 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
     try {
       final repository = ref.read(clientRepositoryProvider);
       final authService = ref.read(authServiceProvider);
-      
+
       final user = await authService.getCurrentUser();
       final orders = await repository.getOrders();
-      
+
       if (mounted) {
         setState(() {
           _currentUser = user;
@@ -77,11 +77,8 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text("Erreur de chargement: $_error"))
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: _buildBody(),
-                ),
+          ? Center(child: Text("Erreur de chargement: $_error"))
+          : RefreshIndicator(onRefresh: _loadData, child: _buildBody()),
       bottomNavigationBar: CustomBottomNavBar(
         currentIndex: _currentNavIndex,
         onTap: _onNavTapped,
@@ -94,7 +91,12 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
 
     // Active = anything not yet delivered/failed
     final activeOrders = _allOrders
-        .where((o) => o.status != 'DELIVERED' && o.status != 'FAILED' && o.status != 'CANCELLED')
+        .where(
+          (o) =>
+              o.status != 'DELIVERED' &&
+              o.status != 'FAILED' &&
+              o.status != 'CANCELLED',
+        )
         .toList();
 
     // Today's orders = active orders whose estimatedDeliveryTime falls on today
@@ -102,21 +104,26 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
       if (o.estimatedDeliveryTime == null) return false;
       try {
         final dt = DateTime.parse(o.estimatedDeliveryTime!);
-        return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+        return dt.year == now.year &&
+            dt.month == now.month &&
+            dt.day == now.day;
       } catch (_) {
         return false;
       }
     }).toList();
 
-
     // Tracking = prefer IN_TRANSIT/IN_PROGRESS, then any active order
     final OrderDTO? trackingOrder = activeOrders.cast<OrderDTO?>().firstWhere(
-          (o) => o?.status == 'IN_TRANSIT' || o?.status == 'IN_PROGRESS',
-          orElse: () => activeOrders.isNotEmpty ? activeOrders.first : null,
-        );
+      (o) => o?.status == 'IN_TRANSIT' || o?.status == 'IN_PROGRESS',
+      orElse: () => activeOrders.isNotEmpty ? activeOrders.first : null,
+    );
 
     final pages = [
-      HomeTabPage(activeOrders: activeOrders, todayOrders: todayOrders, currentUser: _currentUser),
+      HomeTabPage(
+        activeOrders: activeOrders,
+        todayOrders: todayOrders,
+        currentUser: _currentUser,
+      ),
       HistoriqueCommandesPage(history: _allOrders),
       SuiviMapPage(activeOrder: trackingOrder),
       ProfilClientPage(currentUser: _currentUser),
@@ -124,10 +131,7 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
 
     return SafeArea(
       bottom: false,
-      child: IndexedStack(
-        index: _currentNavIndex,
-        children: pages,
-      ),
+      child: IndexedStack(index: _currentNavIndex, children: pages),
     );
   }
 }
@@ -150,7 +154,7 @@ class CustomBottomNavBar extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: const Color(0xFF0F172A),
           borderRadius: BorderRadius.circular(40),
           boxShadow: [
             BoxShadow(
@@ -163,20 +167,34 @@ class CustomBottomNavBar extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _buildNavItem(Icons.home_outlined, 0),
-            _buildNavItem(Icons.local_shipping_outlined, 1),
-            _buildNavItem(Icons.map_outlined, 2),
-            _buildNavItem(Icons.person_outline, 3),
+            _buildNavItem(icon: Icons.home_rounded, index: 0, label: 'Home'),
+            _buildNavItem(
+              icon: Icons.history_rounded,
+              index: 1,
+              label: 'History',
+            ),
+            _buildNavItem(icon: Icons.map_rounded, index: 2, label: 'Map'),
+            _buildNavItem(
+              icon: Icons.person_rounded,
+              index: 3,
+              label: 'Profile',
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(IconData icon, int index) {
+  Widget _buildNavItem({
+    required IconData icon,
+    required int index,
+    required String label,
+  }) {
     final isSelected = currentIndex == index;
+
     return GestureDetector(
       onTap: () => onTap(index),
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 255),
         padding: const EdgeInsets.all(12),

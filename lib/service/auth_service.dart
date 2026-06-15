@@ -19,13 +19,13 @@ class AuthService {
         return null;
       }
     }
-    Future<bool> login(LoginRequestDto loginRequest) async {
+    Future<UserDto?> login(LoginRequestDto loginRequest) async {
       var response = await _apiClient.post('/auth/login', loginRequest.toJson());
       if(response.statusCode! >= 200 && response.statusCode! < 300) {
         await StorageService.saveToken(response.data['token']);
-        return true;
+        return UserDto.fromJson(response.data['user']);
       } else {
-        return false;
+        return null;
       }
     }
 

@@ -35,7 +35,10 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _loadData() async {
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final repo = ref.read(driverRepositoryProvider);
       final auth = ref.read(authServiceProvider);
@@ -53,7 +56,11 @@ class _HomePageState extends ConsumerState<HomePage> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
     }
   }
 
@@ -75,30 +82,64 @@ class _HomePageState extends ConsumerState<HomePage> {
       backgroundColor: const Color(0xFFF7F8FA),
       extendBody: true,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Colors.black,
+                strokeWidth: 2,
+              ),
+            )
           : _error != null
-              ? Center(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.wifi_off_outlined, size: 48, color: Colors.grey.shade400),
-                    const SizedBox(height: 16),
-                    Text('Failed to load', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 8),
-                    Text(_error!, style: TextStyle(fontSize: 13, color: Colors.grey.shade500), textAlign: TextAlign.center),
-                    const SizedBox(height: 20),
-                    GestureDetector(
-                      onTap: _loadData,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
-                        child: const Text('Retry', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.wifi_off_outlined,
+                    size: 48,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: _loadData,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Retry',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ]),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: IndexedStack(index: _currentNavIndex, children: pages),
-                ),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: IndexedStack(index: _currentNavIndex, children: pages),
+            ),
       bottomNavigationBar: _BottomNavBar(
         currentIndex: _currentNavIndex,
         onTap: (i) => setState(() => _currentNavIndex = i),
@@ -130,7 +171,11 @@ class _DashboardTab extends StatelessWidget {
         .toList();
 
     final hour = DateTime.now().hour;
-    final salutation = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+    final salutation = hour < 12
+        ? 'Good Morning'
+        : hour < 17
+        ? 'Good Afternoon'
+        : 'Good Evening';
 
     return SafeArea(
       bottom: false,
@@ -164,12 +209,19 @@ class _DashboardTab extends StatelessWidget {
                     children: [
                       Text(
                         '$salutation, ${currentUser?.name ?? "Driver"}',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
                         currentUser?.email ?? 'SmartFleet Driver',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -178,13 +230,18 @@ class _DashboardTab extends StatelessWidget {
                 GestureDetector(
                   onTap: onRefresh,
                   child: Container(
-                    height: 44, width: 44,
+                    height: 44,
+                    width: 44,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.grey.shade200),
                     ),
-                    child: const Icon(Icons.refresh, color: Colors.black87, size: 20),
+                    child: const Icon(
+                      Icons.refresh,
+                      color: Colors.black87,
+                      size: 20,
+                    ),
                   ),
                 ),
               ],
@@ -199,12 +256,16 @@ class _DashboardTab extends StatelessWidget {
                   Icons.assignment_outlined,
                   '${allSubPrograms.length}',
                   'Total Routes',
-                  allSubPrograms.isEmpty ? 'none' : '${allSubPrograms.where((s) => s.status == 'COMPLETED').length} completed',
+                  allSubPrograms.isEmpty
+                      ? 'none'
+                      : '${allSubPrograms.where((s) => s.status == 'COMPLETED').length} completed',
                 ),
                 const SizedBox(width: 12),
                 _metricCard(
                   Icons.local_shipping_outlined,
-                  activeSubProgram != null ? '${activeSubProgram!.approvedOrdersCount}/${activeSubProgram!.totalOrdersCount}' : '—',
+                  activeSubProgram != null
+                      ? '${activeSubProgram!.approvedOrdersCount}/${activeSubProgram!.totalOrdersCount}'
+                      : '—',
                   'Deliveries',
                   activeSubProgram != null ? 'active route' : 'no active route',
                 ),
@@ -214,26 +275,63 @@ class _DashboardTab extends StatelessWidget {
             const SizedBox(height: 24),
 
             // ── Active subprogram ──
-            Text('ACTIVE ROUTE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+            Text(
+              'ACTIVE ROUTE',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Colors.grey.shade500,
+              ),
+            ),
             const SizedBox(height: 4),
-            const Text('Current Assignment', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.black)),
+            const Text(
+              'Current Assignment',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
+            ),
             const SizedBox(height: 16),
 
             activeSubProgram != null
                 ? _ActiveCard(sp: activeSubProgram!)
-                : _emptyCard(Icons.route_outlined, 'No active route', 'You have no subprogram assigned right now.'),
+                : _emptyCard(
+                    Icons.route_outlined,
+                    'No active route',
+                    'You have no subprogram assigned right now.',
+                  ),
 
             const SizedBox(height: 24),
 
             // ── History ──
-            Text('ROUTE HISTORY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+            Text(
+              'ROUTE HISTORY',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: Colors.grey.shade500,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('${history.length} past route${history.length == 1 ? '' : 's'}',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.black)),
+            Text(
+              '${history.length} past route${history.length == 1 ? '' : 's'}',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
+            ),
             const SizedBox(height: 16),
 
             if (history.isEmpty)
-              _emptyCard(Icons.history_outlined, 'No history yet', 'Completed routes will appear here.')
+              _emptyCard(
+                Icons.history_outlined,
+                'No history yet',
+                'Completed routes will appear here.',
+              )
             else
               ...history.map((sp) => _HistoryCard(sp: sp)),
 
@@ -260,17 +358,38 @@ class _DashboardTab extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   child: Icon(icon, size: 18, color: Colors.black87),
                 ),
                 const Spacer(),
-                Text(sub, style: TextStyle(fontSize: 10, color: Colors.grey.shade500), overflow: TextOverflow.ellipsis),
+                Text(
+                  sub,
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
             const SizedBox(height: 14),
-            Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey.shade600)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              ),
+            ),
           ],
         ),
       ),
@@ -290,9 +409,20 @@ class _DashboardTab extends StatelessWidget {
         children: [
           Icon(icon, size: 48, color: Colors.grey.shade300),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(sub, style: TextStyle(fontSize: 13, color: Colors.grey.shade500), textAlign: TextAlign.center),
+          Text(
+            sub,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -329,18 +459,43 @@ class _ActiveCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SUBPROGRAM', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: Colors.white.withValues(alpha: 0.5))),
+                  Text(
+                    'SUBPROGRAM',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                      color: Colors.white.withValues(alpha: 0.5),
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(sp.subProgramNumber, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+                  Text(
+                    sp.subProgramNumber,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(statusInfo.$1, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                child: Text(
+                  statusInfo.$1,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -353,9 +508,22 @@ class _ActiveCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Progress', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6), fontWeight: FontWeight.w500)),
-                  Text('${sp.approvedOrdersCount}/${sp.totalOrdersCount} delivered',
-                      style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.6), fontWeight: FontWeight.w600)),
+                  Text(
+                    'Progress',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    '${sp.approvedOrdersCount}/${sp.totalOrdersCount} delivered',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -376,13 +544,22 @@ class _ActiveCard extends StatelessWidget {
           // Stats row
           Row(
             children: [
-              _statChip(Icons.receipt_outlined, '${sp.totalOrdersCount} orders'),
+              _statChip(
+                Icons.receipt_outlined,
+                '${sp.totalOrdersCount} orders',
+              ),
               const SizedBox(width: 10),
               if (sp.estimatedDistanceKm != null)
-                _statChip(Icons.straighten_outlined, '${sp.estimatedDistanceKm!.toStringAsFixed(1)} km'),
+                _statChip(
+                  Icons.straighten_outlined,
+                  '${sp.estimatedDistanceKm!.toStringAsFixed(1)} km',
+                ),
               if (sp.estimatedDurationMinutes != null) ...[
                 const SizedBox(width: 10),
-                _statChip(Icons.timer_outlined, '${sp.estimatedDurationMinutes} min'),
+                _statChip(
+                  Icons.timer_outlined,
+                  '${sp.estimatedDurationMinutes} min',
+                ),
               ],
             ],
           ),
@@ -403,7 +580,14 @@ class _ActiveCard extends StatelessWidget {
         children: [
           Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.7)),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85), fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.85),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );
@@ -411,10 +595,14 @@ class _ActiveCard extends StatelessWidget {
 
   (String, Color) _statusStyle(String status) {
     switch (status) {
-      case 'IN_PROGRESS': return ('IN PROGRESS', Colors.orange);
-      case 'COMPLETED': return ('COMPLETED', Colors.green);
-      case 'PENDING': return ('PENDING', Colors.grey);
-      default: return (status, Colors.grey);
+      case 'IN_PROGRESS':
+        return ('IN PROGRESS', Colors.orange);
+      case 'COMPLETED':
+        return ('COMPLETED', Colors.green);
+      case 'PENDING':
+        return ('PENDING', Colors.grey);
+      default:
+        return (status, Colors.grey);
     }
   }
 }
@@ -443,7 +631,9 @@ class _HistoryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isCompleted ? const Color(0xFFE8F5E9) : Colors.grey.shade100,
+              color: isCompleted
+                  ? const Color(0xFFE8F5E9)
+                  : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -457,7 +647,14 @@ class _HistoryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(sp.subProgramNumber, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.black87)),
+                Text(
+                  sp.subProgramNumber,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: Colors.black87,
+                  ),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   '${sp.totalOrdersCount} orders · ${sp.estimatedDistanceKm?.toStringAsFixed(1) ?? "0"} km',
@@ -469,7 +666,9 @@ class _HistoryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: isCompleted ? const Color(0xFFE8F5E9) : Colors.grey.shade100,
+              color: isCompleted
+                  ? const Color(0xFFE8F5E9)
+                  : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -505,9 +704,24 @@ class _ProfileTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('PROFILE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+              Text(
+                'PROFILE',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                  color: Colors.grey.shade500,
+                ),
+              ),
               const SizedBox(height: 4),
-              const Text('My Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+              const Text(
+                'My Account',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black,
+                ),
+              ),
               const SizedBox(height: 24),
 
               // Identity card
@@ -525,12 +739,19 @@ class _ProfileTab extends StatelessWidget {
                       padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.grey.shade300, width: 1.5),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 1.5,
+                        ),
                       ),
                       child: const CircleAvatar(
                         radius: 30,
                         backgroundColor: Color(0xFFF0F1F5),
-                        child: Icon(Icons.person, size: 30, color: Colors.black54),
+                        child: Icon(
+                          Icons.person,
+                          size: 30,
+                          color: Colors.black54,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -538,20 +759,55 @@ class _ProfileTab extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(currentUser?.name ?? 'Driver', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black)),
+                          Text(
+                            currentUser?.name ?? 'Driver',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
+                          ),
                           const SizedBox(height: 3),
-                          Text(currentUser?.email ?? '—', style: TextStyle(fontSize: 13, color: Colors.grey.shade600), overflow: TextOverflow.ellipsis),
-                          if (currentUser?.phone != null && currentUser!.phone!.isNotEmpty) ...[
+                          Text(
+                            currentUser?.email ?? '—',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (currentUser?.phone != null &&
+                              currentUser!.phone!.isNotEmpty) ...[
                             const SizedBox(height: 2),
-                            Text(currentUser!.phone!, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                            Text(
+                              currentUser!.phone!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
                           ],
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
-                      child: const Text('DRIVER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: const Text(
+                        'DRIVER',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black54,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -593,7 +849,14 @@ class _ProfileTab extends StatelessWidget {
                     children: [
                       Icon(Icons.logout, color: Colors.black87, size: 20),
                       SizedBox(width: 10),
-                      Text('Log Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87)),
+                      Text(
+                        'Log Out',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -607,7 +870,15 @@ class _ProfileTab extends StatelessWidget {
 
   Widget _sectionLabel(String text) => Padding(
     padding: const EdgeInsets.only(left: 4),
-    child: Text(text.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: Colors.grey.shade500)),
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.2,
+        color: Colors.grey.shade500,
+      ),
+    ),
   );
 
   Widget _settingsGroup(List<(IconData, String)> items) {
@@ -625,21 +896,46 @@ class _ProfileTab extends StatelessWidget {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: Icon(icon, color: Colors.black87, size: 18),
                     ),
                     const SizedBox(width: 14),
-                    Expanded(child: Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87))),
-                    const Icon(Icons.chevron_right, size: 18, color: Colors.black38),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: Colors.black38,
+                    ),
                   ],
                 ),
               ),
-              if (!isLast) const Divider(height: 1, indent: 56, endIndent: 16, color: Color(0xFFF0F1F5)),
+              if (!isLast)
+                const Divider(
+                  height: 1,
+                  indent: 56,
+                  endIndent: 16,
+                  color: Color(0xFFF0F1F5),
+                ),
             ],
           );
         }).toList(),
@@ -663,9 +959,15 @@ class _BottomNavBar extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: const Color(0xFF0F172A),
           borderRadius: BorderRadius.circular(40),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -688,8 +990,15 @@ class _BottomNavBar extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: isSelected ? Colors.white : Colors.transparent, shape: BoxShape.circle),
-        child: Icon(icon, color: isSelected ? Colors.black : Colors.white60, size: 26),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white : Colors.transparent,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          color: isSelected ? Colors.black : Colors.white60,
+          size: 26,
+        ),
       ),
     );
   }

@@ -6,7 +6,7 @@ import 'package:smartfleet_frontend/core/storage_service.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 
 class WebSocketService {
-  static const String _socketUrl = 'ws://localhost:8080/api/ws';
+  static const String _socketUrl = 'ws://localhost:8080/api/ws/websocket';
 
   StompClient? _client;
   bool _isConnected = false;

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:smartfleet_frontend/login_page.dart';
-import 'package:smartfleet_frontend/service/snackbar_service.dart';
+import 'package:smartfleet_frontend/features/auth/presentation/login_page.dart';
+import 'package:smartfleet_frontend/core/snackbar_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() {

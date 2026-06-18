@@ -437,10 +437,6 @@ class _SubProgramDetailPageState extends ConsumerState<SubProgramDetailPage> {
       _sp.status == SubProgramStatus.assigned.value ||
       _sp.status == SubProgramStatus.pending.value;
 
-  bool get _canStart =>
-      _sp.status == SubProgramStatus.assigned.value ||
-      _sp.status == SubProgramStatus.pending.value;
-
   Future<void> _calculateRoute() async {
     setState(() => _isCalculating = true);
     try {

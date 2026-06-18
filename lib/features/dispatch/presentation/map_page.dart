@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
+import 'package:smartfleet_frontend/core/websocket_service.dart';
 import 'package:smartfleet_frontend/features/order/data/order_dto.dart';
 import 'package:smartfleet_frontend/features/fleet/data/driver_dto.dart';
 import 'package:smartfleet_frontend/features/dispatch/data/delivery_program_dto.dart';
@@ -13,7 +14,8 @@ import 'package:smartfleet_frontend/features/dispatch/data/dispatch_repository.d
 import 'package:smartfleet_frontend/features/fleet/data/vehicle_repository.dart';
 
 class MapPage extends ConsumerStatefulWidget {
-  const MapPage({super.key});
+  final int? managerId;
+  const MapPage({super.key, this.managerId});
 
   @override
   ConsumerState<MapPage> createState() => _MapPageState();
@@ -37,6 +39,7 @@ class _MapPageState extends ConsumerState<MapPage> {
 
   // Selected item for bottom sheet
   _SelectedItem? _selectedItem;
+  VoidCallback? _locationSubscription;
 
   final String _tileServerUrl =
       'http://127.0.0.1:8081/morocco_vector/{z}/{x}/{y}.mvt';
@@ -46,6 +49,21 @@ class _MapPageState extends ConsumerState<MapPage> {
     super.initState();
     _loadVectorStyle();
     _loadData();
+    _connectWebSocket();
+  }
+
+  @override
+  void didUpdateWidget(covariant MapPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.managerId != widget.managerId) {
+      _connectWebSocket();
+    }
+  }
+
+  @override
+  void dispose() {
+    _locationSubscription?.call();
+    super.dispose();
   }
 
   Future<void> _loadVectorStyle() async {
@@ -118,6 +136,115 @@ class _MapPageState extends ConsumerState<MapPage> {
         );
       }
     }
+  }
+
+  void _connectWebSocket() {
+    _locationSubscription?.call();
+    _locationSubscription = null;
+
+    final managerId = widget.managerId;
+    if (managerId == null) return;
+
+    ref.read(webSocketServiceProvider).connect(() {
+      final unsubscribe = ref
+          .read(webSocketServiceProvider)
+          .subscribeToFleetLocations(managerId, _handleFleetLocationUpdate);
+      if (mounted) {
+        setState(() => _locationSubscription = unsubscribe);
+      }
+    });
+  }
+
+  void _handleFleetLocationUpdate(dynamic data) {
+    final updates = _extractDriverUpdates(data);
+    if (updates.isEmpty) return;
+
+    setState(() {
+      for (final update in updates) {
+        final driverId =
+            _numberFrom(update['id']) ??
+            _numberFrom(update['driverId']) ??
+            _numberFrom(update['userId']);
+        if (driverId == null) continue;
+
+        final currentIndex = _drivers.indexWhere((d) => d.id == driverId);
+        if (currentIndex == -1) continue;
+
+        final current = _drivers[currentIndex];
+        _drivers[currentIndex] = DriverDto(
+          id: current.id,
+          email: update['email'] as String? ?? current.email,
+          name: update['name'] as String? ?? current.name,
+          phone: update['phone'] as String? ?? current.phone,
+          role: update['role'] as String? ?? current.role,
+          active: update['active'] is bool
+              ? update['active'] as bool
+              : current.active,
+          licenseNumber:
+              update['licenseNumber'] as String? ?? current.licenseNumber,
+          licenseExpiry:
+              update['licenseExpiry'] as String? ?? current.licenseExpiry,
+          available: update['available'] is bool
+              ? update['available'] as bool
+              : current.available,
+          managerId: _intFrom(update['managerId']) ?? current.managerId,
+          currentLatitude:
+              _numberFrom(update['currentLatitude']) ??
+              _numberFrom(update['latitude']) ??
+              current.currentLatitude,
+          currentLongitude:
+              _numberFrom(update['currentLongitude']) ??
+              _numberFrom(update['longitude']) ??
+              current.currentLongitude,
+          lastLocationUpdate:
+              update['lastLocationUpdate'] as String? ??
+              current.lastLocationUpdate,
+        );
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> _extractDriverUpdates(dynamic data) {
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
+    if (data is! Map) return [];
+
+    if (data['drivers'] is List) {
+      return (data['drivers'] as List)
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
+    if (data['driver'] is Map) {
+      return [Map<String, dynamic>.from(data['driver'] as Map)];
+    }
+
+    if (data['id'] != null ||
+        data['driverId'] != null ||
+        data['currentLatitude'] != null ||
+        data['latitude'] != null) {
+      return [Map<String, dynamic>.from(data)];
+    }
+
+    return [];
+  }
+
+  double? _numberFrom(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  int? _intFrom(dynamic value) {
+    final number = _numberFrom(value);
+    return number?.toInt();
   }
 
   // ─── ORDER MARKERS ──────────────────────────────────

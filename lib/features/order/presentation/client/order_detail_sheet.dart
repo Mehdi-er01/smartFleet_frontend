@@ -1,28 +1,115 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smartfleet_frontend/features/order/data/order_dto.dart';
 import 'package:smartfleet_frontend/features/order/domain/order_status.dart';
+import 'package:smartfleet_frontend/features/order/data/order_repository.dart';
 
 /// Shows a premium, scrollable bottom-sheet with full order details.
-void showOrderDetailSheet(BuildContext context, OrderDto order) {
+void showOrderDetailSheet(
+  BuildContext context,
+  OrderDto order, {
+  VoidCallback? onRefresh,
+}) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _OrderDetailSheet(order: order),
+    builder: (_) => _OrderDetailSheet(order: order, onRefresh: onRefresh),
   );
 }
 
-class _OrderDetailSheet extends StatelessWidget {
+class _OrderDetailSheet extends ConsumerStatefulWidget {
   final OrderDto order;
-  const _OrderDetailSheet({required this.order});
+  final VoidCallback? onRefresh;
+  const _OrderDetailSheet({required this.order, this.onRefresh});
+
+  @override
+  ConsumerState<_OrderDetailSheet> createState() => _OrderDetailSheetState();
+}
+
+class _OrderDetailSheetState extends ConsumerState<_OrderDetailSheet> {
+  late OrderDto _order;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _order = widget.order;
+  }
+
+  Future<void> _approveOrder() async {
+    setState(() => _isProcessing = true);
+    try {
+      final repo = ref.read(orderRepositoryProvider);
+      final updated = await repo.approveOrder(_order.id);
+      if (mounted) {
+        setState(() {
+          _order = updated;
+          _isProcessing = false;
+        });
+        widget.onRefresh?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order approved successfully!'),
+            backgroundColor: Colors.black,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectOrder() async {
+    setState(() => _isProcessing = true);
+    try {
+      final repo = ref.read(orderRepositoryProvider);
+      final updated = await repo.rejectOrder(_order.id);
+      if (mounted) {
+        setState(() {
+          _order = updated;
+          _isProcessing = false;
+        });
+        widget.onRefresh?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order rejected!'),
+            backgroundColor: Colors.black,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isDelivered = order.status == OrderStatus.delivered.value;
+    final isDelivered = _order.status == OrderStatus.delivered.value;
     final isFailed =
-        order.status == OrderStatus.rejected.value ||
-        order.status == OrderStatus.cancelled.value;
-    final isInProgress = order.status == OrderStatus.inTransit.value;
+        _order.status == OrderStatus.rejected.value ||
+        _order.status == OrderStatus.cancelled.value;
+    final isInProgress = _order.status == OrderStatus.inTransit.value;
 
     Color statusColor;
     IconData statusIcon;
@@ -46,7 +133,7 @@ class _OrderDetailSheet extends StatelessWidget {
     }
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.65,
+      initialChildSize: 0.75,
       minChildSize: 0.4,
       maxChildSize: 0.95,
       builder: (_, scrollController) {
@@ -94,7 +181,7 @@ class _OrderDetailSheet extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                order.orderNumber,
+                                _order.orderNumber,
                                 style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.w900,
@@ -119,7 +206,7 @@ class _OrderDetailSheet extends StatelessWidget {
                               Icon(statusIcon, color: statusColor, size: 16),
                               const SizedBox(width: 6),
                               Text(
-                                order.status.replaceAll('_', ' '),
+                                _order.status.replaceAll('_', ' '),
                                 style: TextStyle(
                                   color: statusColor,
                                   fontSize: 13,
@@ -139,14 +226,14 @@ class _OrderDetailSheet extends StatelessWidget {
                     _infoRow(
                       Icons.location_on_rounded,
                       'Delivery Address',
-                      order.deliveryAddress,
+                      _order.deliveryAddress,
                     ),
-                    if (order.deliveryDescription != null &&
-                        order.deliveryDescription!.isNotEmpty)
+                    if (_order.deliveryDescription != null &&
+                        _order.deliveryDescription!.isNotEmpty)
                       _infoRow(
                         Icons.notes_rounded,
                         'Description',
-                        order.deliveryDescription!,
+                        _order.deliveryDescription!,
                       ),
 
                     const SizedBox(height: 24),
@@ -158,7 +245,7 @@ class _OrderDetailSheet extends StatelessWidget {
                         Expanded(
                           child: _metricCard(
                             Icons.scale_rounded,
-                            '${order.weightKg} kg',
+                            '${_order.weightKg} kg',
                             'Weight',
                           ),
                         ),
@@ -166,7 +253,7 @@ class _OrderDetailSheet extends StatelessWidget {
                         Expanded(
                           child: _metricCard(
                             Icons.view_in_ar_rounded,
-                            '${order.volumeM2} m³',
+                            '${_order.volumeM2} m³',
                             'Volume',
                           ),
                         ),
@@ -177,18 +264,18 @@ class _OrderDetailSheet extends StatelessWidget {
                     _sectionTitle('Timeline'),
                     const SizedBox(height: 14),
 
-                    if (order.estimatedDeliveryTime != null)
+                    if (_order.estimatedDeliveryTime != null)
                       _timelineRow(
                         Icons.access_time_rounded,
                         'Estimated Delivery',
-                        _formatDate(order.estimatedDeliveryTime!),
+                        _formatDate(_order.estimatedDeliveryTime!),
                         isFirst: true,
                       ),
-                    if (order.actualDeliveryTime != null)
+                    if (_order.actualDeliveryTime != null)
                       _timelineRow(
                         Icons.done_all_rounded,
                         'Actual Delivery',
-                        _formatDate(order.actualDeliveryTime!),
+                        _formatDate(_order.actualDeliveryTime!),
                         isLast: true,
                         color: Colors.green.shade600,
                       ),
@@ -213,7 +300,7 @@ class _OrderDetailSheet extends StatelessWidget {
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            '${order.deliveryLatitude.toStringAsFixed(4)}, ${order.deliveryLongitude.toStringAsFixed(4)}',
+                            '${_order.deliveryLatitude.toStringAsFixed(4)}, ${_order.deliveryLongitude.toStringAsFixed(4)}',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -224,8 +311,10 @@ class _OrderDetailSheet extends StatelessWidget {
                       ),
                     ),
 
-                    if (!order.clientApproved) ...[
-                      const SizedBox(height: 28),
+                    const SizedBox(height: 28),
+
+                    // Client Approval Actions
+                    if (!_order.clientApproved && _order.status != OrderStatus.rejected.value && _order.status != OrderStatus.cancelled.value) ...[
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -247,6 +336,80 @@ class _OrderDetailSheet extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: OutlinedButton(
+                                onPressed: _isProcessing ? null : _rejectOrder,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red, width: 1.5),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Reject',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: SizedBox(
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed: _isProcessing ? null : _approveOrder,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.black,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: const Text(
+                                  'Approve',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (_order.clientApproved) ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline_rounded,
+                              color: Colors.green.shade700,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Approved by you',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green,
                                 ),
                               ),
                             ),

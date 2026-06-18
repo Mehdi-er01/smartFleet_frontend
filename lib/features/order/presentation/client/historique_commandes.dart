@@ -5,7 +5,8 @@ import 'order_detail_sheet.dart';
 
 class HistoriqueCommandesPage extends StatefulWidget {
   final List<OrderDto> history;
-  const HistoriqueCommandesPage({super.key, required this.history});
+  final VoidCallback? onRefresh;
+  const HistoriqueCommandesPage({super.key, required this.history, this.onRefresh});
 
   @override
   State<HistoriqueCommandesPage> createState() =>
@@ -217,7 +218,7 @@ class _HistoriqueCommandesPageState extends State<HistoriqueCommandesPage> {
                       itemBuilder: (context, index) {
                         return GestureDetector(
                           onTap: () =>
-                              showOrderDetailSheet(context, filtered[index]),
+                              showOrderDetailSheet(context, filtered[index], onRefresh: widget.onRefresh),
                           child: _buildHistoryCard(filtered[index]),
                         );
                       },

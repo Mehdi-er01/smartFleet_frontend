@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:smartfleet_frontend/core/websocket_service.dart';
 import 'package:smartfleet_frontend/features/order/data/order_dto.dart';
 import 'package:smartfleet_frontend/features/order/domain/order_status.dart';
 import 'package:smartfleet_frontend/features/driver/data/sub_program_dto.dart';
@@ -16,7 +17,8 @@ import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 
 class MapPage extends ConsumerStatefulWidget {
   final SubProgramDto? activeSubProgram;
-  const MapPage({super.key, this.activeSubProgram});
+  final int? driverId;
+  const MapPage({super.key, this.activeSubProgram, this.driverId});
 
   @override
   ConsumerState<MapPage> createState() => _MapPageState();
@@ -30,6 +32,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   LatLng? _userLocation;
   String _locationError = '';
   Timer? _locationTimer;
+  bool _isFetchingLocation = false;
 
   List<OrderDto> _stopOrders = [];
 
@@ -40,6 +43,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   void initState() {
     super.initState();
     _loadVectorStyle();
+    _connectWebSocket();
     _startLocationTracking();
     _loadStops();
   }
@@ -108,7 +112,7 @@ class _MapPageState extends ConsumerState<MapPage> {
     if (!ok) return;
     await _fetchUserLocation();
     _locationTimer = Timer.periodic(
-      const Duration(seconds: 10),
+      const Duration(seconds: 30),
       (_) => _fetchUserLocation(),
     );
   }
@@ -133,6 +137,9 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _fetchUserLocation() async {
+    if (_isFetchingLocation) return;
+
+    _isFetchingLocation = true;
     try {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -140,14 +147,34 @@ class _MapPageState extends ConsumerState<MapPage> {
           timeLimit: Duration(seconds: 8),
         ),
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _userLocation = LatLng(pos.latitude, pos.longitude);
           _locationError = '';
         });
+      }
+      _publishLocation(pos.latitude, pos.longitude);
     } catch (_) {
       if (mounted) setState(() => _locationError = 'Could not get location.');
+    } finally {
+      _isFetchingLocation = false;
     }
+  }
+
+  void _publishLocation(double latitude, double longitude) {
+    ref.read(webSocketServiceProvider).sendDriverLocation({
+      'driverId': widget.driverId,
+      'subProgramId': widget.activeSubProgram?.id,
+      'latitude': latitude,
+      'longitude': longitude,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+
+  void _connectWebSocket() {
+    ref
+        .read(webSocketServiceProvider)
+        .connect(() => debugPrint('Driver location WebSocket ready.'));
   }
 
   List<LatLng> get _stopPoints => _stopOrders

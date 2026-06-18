@@ -8,12 +8,14 @@ class HomeTabPage extends StatelessWidget {
   final List<OrderDto> activeOrders;
   final List<OrderDto> todayOrders;
   final UserDto? currentUser;
+  final VoidCallback? onRefresh;
 
   const HomeTabPage({
     super.key,
     required this.activeOrders,
     required this.todayOrders,
     this.currentUser,
+    this.onRefresh,
   });
 
   @override
@@ -85,7 +87,7 @@ class HomeTabPage extends StatelessWidget {
             else
               ...todayOrders.map(
                 (order) => GestureDetector(
-                  onTap: () => showOrderDetailSheet(context, order),
+                  onTap: () => showOrderDetailSheet(context, order, onRefresh: onRefresh),
                   child: _buildOrderCard(order),
                 ),
               ),
@@ -122,7 +124,7 @@ class HomeTabPage extends StatelessWidget {
             else
               ...activeOrders.map(
                 (order) => GestureDetector(
-                  onTap: () => showOrderDetailSheet(context, order),
+                  onTap: () => showOrderDetailSheet(context, order, onRefresh: onRefresh),
                   child: _buildOrderCard(order),
                 ),
               ),

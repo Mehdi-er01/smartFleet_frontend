@@ -9,6 +9,7 @@ import 'package:smartfleet_frontend/features/driver/data/driver_repository.dart'
 import 'package:smartfleet_frontend/core/storage_service.dart';
 import 'package:smartfleet_frontend/features/driver/presentation/inventory_page.dart';
 import 'package:smartfleet_frontend/features/driver/presentation/map_page.dart';
+import 'package:smartfleet_frontend/features/auth/presentation/profile_edit_dialog.dart';
 
 // ─────────────────────────────────────────
 // ROOT SHELL
@@ -75,8 +76,15 @@ class _HomePageState extends ConsumerState<HomePage> {
         onRefresh: _loadData,
       ),
       const InventoryPage(),
-      MapPage(activeSubProgram: _activeSubProgram),
-      _ProfileTab(currentUser: _currentUser),
+      MapPage(activeSubProgram: _activeSubProgram, driverId: _currentUser?.id),
+      _ProfileTab(
+        currentUser: _currentUser,
+        onUserUpdated: (user) {
+          setState(() {
+            _currentUser = user;
+          });
+        },
+      ),
     ];
 
     return Scaffold(
@@ -692,7 +700,8 @@ class _HistoryCard extends StatelessWidget {
 // ─────────────────────────────────────────
 class _ProfileTab extends StatelessWidget {
   final UserDto? currentUser;
-  const _ProfileTab({this.currentUser});
+  final ValueChanged<UserDto>? onUserUpdated;
+  const _ProfileTab({this.currentUser, this.onUserUpdated});
 
   @override
   Widget build(BuildContext context) {
@@ -816,12 +825,35 @@ class _ProfileTab extends StatelessWidget {
 
               const SizedBox(height: 20),
 
+              // Account settings
+              _sectionLabel('Account Settings'),
+              const SizedBox(height: 10),
+              _settingsGroup([
+                (
+                  Icons.person_outline,
+                  'Personal Information',
+                  () async {
+                    if (currentUser == null) return;
+                    final updated = await showDialog<UserDto>(
+                      context: context,
+                      builder: (_) =>
+                          ProfileEditDialog(currentUser: currentUser!),
+                    );
+                    if (updated != null) {
+                      onUserUpdated?.call(updated);
+                    }
+                  },
+                ),
+              ]),
+
+              const SizedBox(height: 20),
+
               // Support group
               _sectionLabel('Support'),
               const SizedBox(height: 10),
               _settingsGroup([
-                (Icons.help_outline, 'Help Center'),
-                (Icons.policy_outlined, 'Privacy Policy'),
+                (Icons.help_outline, 'Help Center', null),
+                (Icons.policy_outlined, 'Privacy Policy', null),
               ]),
 
               const SizedBox(height: 24),
@@ -882,7 +914,7 @@ class _ProfileTab extends StatelessWidget {
     ),
   );
 
-  Widget _settingsGroup(List<(IconData, String)> items) {
+  Widget _settingsGroup(List<(IconData, String, VoidCallback?)> items) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -892,42 +924,49 @@ class _ProfileTab extends StatelessWidget {
       child: Column(
         children: items.asMap().entries.map((entry) {
           final index = entry.key;
-          final (icon, label) = entry.value;
+          final (icon, label, onTap) = entry.value;
           final isLast = index == items.length - 1;
           return Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
+              InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.vertical(
+                  top: index == 0 ? const Radius.circular(16) : Radius.zero,
+                  bottom: isLast ? const Radius.circular(16) : Radius.zero,
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: Colors.black87, size: 18),
                       ),
-                      child: Icon(icon, color: Colors.black87, size: 18),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
                         ),
                       ),
-                    ),
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: Colors.black38,
-                    ),
-                  ],
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: Colors.black38,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               if (!isLast)

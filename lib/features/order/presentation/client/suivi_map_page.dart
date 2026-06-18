@@ -1,32 +1,39 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
+import 'package:smartfleet_frontend/core/websocket_service.dart';
 import 'package:smartfleet_frontend/features/order/data/order_dto.dart';
 import 'order_detail_sheet.dart';
 
-class SuiviMapPage extends StatefulWidget {
+class SuiviMapPage extends ConsumerStatefulWidget {
   final OrderDto? activeOrder;
-  const SuiviMapPage({super.key, required this.activeOrder});
+  final int? clientId;
+  final VoidCallback? onRefresh;
+  const SuiviMapPage({
+    super.key,
+    required this.activeOrder,
+    this.clientId,
+    this.onRefresh,
+  });
 
   @override
-  State<SuiviMapPage> createState() => _SuiviMapPageState();
+  ConsumerState<SuiviMapPage> createState() => _SuiviMapPageState();
 }
 
-class _SuiviMapPageState extends State<SuiviMapPage> {
+class _SuiviMapPageState extends ConsumerState<SuiviMapPage> {
   final MapController _mapController = MapController();
   vtr.Theme? _mapTheme;
   bool _themeLoading = true;
 
-  LatLng? _userLocation;
+  LatLng? _driverLocation;
   String _locationError = '';
-  Timer? _locationTimer;
+  VoidCallback? _locationSubscription;
 
   final String _tileServerUrl =
       'http://127.0.0.1:8081/morocco_vector/{z}/{x}/{y}.mvt';
@@ -35,12 +42,20 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
   void initState() {
     super.initState();
     _loadVectorStyle();
-    _startLocationTracking();
+    _connectLocationWebSocket();
+  }
+
+  @override
+  void didUpdateWidget(covariant SuiviMapPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeOrder?.id != widget.activeOrder?.id) {
+      _connectLocationWebSocket();
+    }
   }
 
   @override
   void dispose() {
-    _locationTimer?.cancel();
+    _locationSubscription?.call();
     super.dispose();
   }
 
@@ -49,62 +64,95 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
       final styleString = await rootBundle.loadString('assets/map_style.json');
       final styleJson = jsonDecode(styleString);
       final theme = vtr.ThemeReader().read(styleJson);
-      if (mounted) setState(() { _mapTheme = theme; _themeLoading = false; });
+      if (mounted)
+        setState(() {
+          _mapTheme = theme;
+          _themeLoading = false;
+        });
     } catch (e) {
       final fallback = {
         'version': 8,
         'name': 'Fallback',
-        'sources': {'openmaptiles': {'type': 'vector'}},
+        'sources': {
+          'openmaptiles': {'type': 'vector'},
+        },
         'layers': [
-          {'id': 'background', 'type': 'background', 'paint': {'background-color': '#F7F8FA'}},
-          {'id': 'roads', 'type': 'line', 'source': 'openmaptiles',
-           'source-layer': 'transportation', 'paint': {'line-color': '#D0D0D0', 'line-width': 2}},
+          {
+            'id': 'background',
+            'type': 'background',
+            'paint': {'background-color': '#F7F8FA'},
+          },
+          {
+            'id': 'roads',
+            'type': 'line',
+            'source': 'openmaptiles',
+            'source-layer': 'transportation',
+            'paint': {'line-color': '#D0D0D0', 'line-width': 2},
+          },
         ],
       };
-      final theme = vtr.ThemeReader(logger: const vtr.Logger.console()).read(fallback);
-      if (mounted) setState(() { _mapTheme = theme; _themeLoading = false; });
-    }
-  }
-
-  Future<void> _startLocationTracking() async {
-    final ok = await _requestLocationPermission();
-    if (!ok) return;
-    await _fetchUserLocation();
-    // refresh every 10 seconds
-    _locationTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchUserLocation());
-  }
-
-  Future<bool> _requestLocationPermission() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) setState(() => _locationError = 'Location services disabled.');
-      return false;
-    }
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      if (mounted) setState(() => _locationError = 'Location permission denied.');
-      return false;
-    }
-    return true;
-  }
-
-  Future<void> _fetchUserLocation() async {
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 8)),
-      );
-      if (mounted) {
+      final theme = vtr.ThemeReader(
+        logger: const vtr.Logger.console(),
+      ).read(fallback);
+      if (mounted)
         setState(() {
-          _userLocation = LatLng(pos.latitude, pos.longitude);
-          _locationError = '';
+          _mapTheme = theme;
+          _themeLoading = false;
         });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _locationError = 'Could not get location.');
     }
+  }
+
+  void _connectLocationWebSocket() {
+    _locationSubscription?.call();
+    _locationSubscription = null;
+
+    final order = widget.activeOrder;
+    if (order == null) return;
+
+    ref.read(webSocketServiceProvider).connect(() {
+      final unsubscribe = ref
+          .read(webSocketServiceProvider)
+          .subscribeToOrderLocation(order.id, _handleDriverLocationUpdate);
+      if (mounted) {
+        setState(() => _locationSubscription = unsubscribe);
+      }
+    });
+  }
+
+  void _handleDriverLocationUpdate(dynamic data) {
+    final payload = data is Map
+        ? Map<dynamic, dynamic>.from(data)
+        : <dynamic, dynamic>{};
+    final nestedDriver = payload['driver'] is Map
+        ? Map<dynamic, dynamic>.from(payload['driver'] as Map)
+        : <dynamic, dynamic>{};
+    final source = nestedDriver.isNotEmpty ? nestedDriver : payload;
+
+    final latitude =
+        _numberFrom(source['latitude']) ??
+        _numberFrom(source['currentLatitude']) ??
+        _numberFrom(source['lat']);
+    final longitude =
+        _numberFrom(source['longitude']) ??
+        _numberFrom(source['currentLongitude']) ??
+        _numberFrom(source['lng']) ??
+        _numberFrom(source['lon']);
+
+    if (latitude == null || longitude == null) return;
+
+    if (mounted) {
+      setState(() {
+        _driverLocation = LatLng(latitude, longitude);
+        _locationError = '';
+      });
+    }
+  }
+
+  double? _numberFrom(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
   }
 
   LatLng get _deliveryPoint {
@@ -116,19 +164,23 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
   }
 
   LatLng get _mapCenter {
-    if (_userLocation != null) {
+    if (_driverLocation != null) {
       // Center between user and delivery point
       return LatLng(
-        (_userLocation!.latitude + _deliveryPoint.latitude) / 2,
-        (_userLocation!.longitude + _deliveryPoint.longitude) / 2,
+        (_driverLocation!.latitude + _deliveryPoint.latitude) / 2,
+        (_driverLocation!.longitude + _deliveryPoint.longitude) / 2,
       );
     }
     return _deliveryPoint;
   }
 
   double get _mapZoom {
-    if (_userLocation == null) return 14.5;
-    final dist = const Distance().as(LengthUnit.Kilometer, _userLocation!, _deliveryPoint);
+    if (_driverLocation == null) return 14.5;
+    final dist = const Distance().as(
+      LengthUnit.Kilometer,
+      _driverLocation!,
+      _deliveryPoint,
+    );
     if (dist < 1) return 14.5;
     if (dist < 5) return 12.0;
     if (dist < 20) return 10.0;
@@ -147,15 +199,19 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
 
   String _statusLabel(String status) {
     switch (status) {
-      case 'IN_TRANSIT': return 'In Transit';
-      case 'IN_PROGRESS': return 'In Progress';
-      case 'PENDING': return 'Pending';
-      default: return status;
+      case 'IN_TRANSIT':
+        return 'In Transit';
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'PENDING':
+        return 'Pending';
+      default:
+        return status;
     }
   }
 
   void _fitBothMarkers() {
-    if (_userLocation == null) {
+    if (_driverLocation == null) {
       _mapController.move(_deliveryPoint, 14.5);
       return;
     }
@@ -177,9 +233,24 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('LIVE TRACKING', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Colors.grey.shade500)),
+                    Text(
+                      'LIVE TRACKING',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    const Text('No Active Order', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black)),
+                    const Text(
+                      'No Active Order',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -195,14 +266,28 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.grey.shade200),
                         ),
-                        child: Icon(Icons.location_off_outlined, size: 48, color: Colors.grey.shade400),
+                        child: Icon(
+                          Icons.location_off_outlined,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                       ),
                       const SizedBox(height: 20),
-                      const Text('Nothing to track right now', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
+                      const Text(
+                        'Nothing to track right now',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Text(
                         'Your active orders will appear here\nonce they are in transit.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -218,7 +303,9 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
     if (_themeLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFFF7F8FA),
-        body: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)),
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+        ),
       );
     }
 
@@ -250,11 +337,11 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                 ),
 
               // ── Dashed line between user and delivery ──
-              if (_userLocation != null)
+              if (_driverLocation != null)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: [_userLocation!, deliveryPoint],
+                      points: [_driverLocation!, deliveryPoint],
                       color: Colors.black.withValues(alpha: 0.18),
                       strokeWidth: 2.5,
                       pattern: StrokePattern.dashed(segments: [10, 8]),
@@ -280,27 +367,49 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                             color: Colors.black,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2.5),
-                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.25),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          child: const Icon(Icons.local_shipping, color: Colors.white, size: 18),
+                          child: const Icon(
+                            Icons.local_shipping,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
-                        CustomPaint(size: const Size(12, 8), painter: _TrianglePainter(Colors.black)),
+                        CustomPaint(
+                          size: const Size(12, 8),
+                          painter: _TrianglePainter(Colors.black),
+                        ),
                       ],
                     ),
                   ),
 
                   // User location pulse marker
-                  if (_userLocation != null)
+                  if (_driverLocation != null)
                     Marker(
-                      point: _userLocation!,
+                      point: _driverLocation!,
                       width: 56,
                       height: 56,
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.grey.shade300, width: 1.5),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 8, offset: const Offset(0, 3))],
+                          border: Border.all(
+                            color: Colors.grey.shade300,
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: Stack(
                           alignment: Alignment.center,
@@ -349,28 +458,52 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 8, height: 8,
-                            decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.black,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          const Text('Live Tracking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Colors.black87)),
+                          const Text(
+                            'Live Tracking',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     const Spacer(),
                     GestureDetector(
-                      onTap: () => showOrderDetailSheet(context, order),
+                      onTap: () => showOrderDetailSheet(
+                        context,
+                        order,
+                        onRefresh: widget.onRefresh,
+                      ),
                       child: _iconButton(Icons.info_outline),
                     ),
                     const SizedBox(width: 10),
@@ -380,7 +513,7 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                     ),
                     const SizedBox(width: 10),
                     GestureDetector(
-                      onTap: _fetchUserLocation,
+                      onTap: _connectLocationWebSocket,
                       child: _iconButton(Icons.my_location),
                     ),
                   ],
@@ -402,13 +535,22 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                 if (_locationError.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.grey.shade200),
                     ),
-                    child: Text(_locationError, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                    child: Text(
+                      _locationError,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -427,7 +569,13 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.grey.shade200),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -436,17 +584,37 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.local_shipping_outlined, color: Colors.black87, size: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.local_shipping_outlined,
+                          color: Colors.black87,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(order.orderNumber, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.black87)),
+                            Text(
+                              order.orderNumber,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: Colors.black87,
+                              ),
+                            ),
                             const SizedBox(height: 2),
-                            Text(_statusLabel(order.status), style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                            Text(
+                              _statusLabel(order.status),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -454,11 +622,22 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Est. Arrival', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Est. Arrival',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               _formatArrival(order.estimatedDeliveryTime),
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black,
+                              ),
                             ),
                           ],
                         ),
@@ -471,28 +650,50 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.location_on, color: Colors.white, size: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.white,
+                          size: 14,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           order.deliveryAddress,
-                          style: TextStyle(fontSize: 13, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (_userLocation != null) ...[
+                      if (_driverLocation != null) ...[
                         const SizedBox(width: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Distance', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                            Text(
+                              'Distance',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(height: 1),
                             Text(
                               _distanceLabel(),
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                              ),
                             ),
                           ],
                         ),
@@ -509,9 +710,15 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
   }
 
   String _distanceLabel() {
-    if (_userLocation == null) return '';
-    final dist = const Distance().as(LengthUnit.Kilometer, _userLocation!, _deliveryPoint);
-    return dist < 1 ? '${(dist * 1000).round()} m' : '${dist.toStringAsFixed(1)} km';
+    if (_driverLocation == null) return '';
+    final dist = const Distance().as(
+      LengthUnit.Kilometer,
+      _driverLocation!,
+      _deliveryPoint,
+    );
+    return dist < 1
+        ? '${(dist * 1000).round()} m'
+        : '${dist.toStringAsFixed(1)} km';
   }
 
   Widget _iconButton(IconData icon) {
@@ -521,7 +728,13 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Icon(icon, color: Colors.black87, size: 20),
     );
@@ -534,14 +747,23 @@ class _SuiviMapPageState extends State<SuiviMapPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 6),
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
         ],
       ),
     );

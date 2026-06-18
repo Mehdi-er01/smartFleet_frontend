@@ -124,10 +124,22 @@ class _ClientSpaceState extends ConsumerState<ClientSpace> {
         activeOrders: activeOrders,
         todayOrders: todayOrders,
         currentUser: _currentUser,
+        onRefresh: _loadData,
       ),
-      HistoriqueCommandesPage(history: _allOrders),
-      SuiviMapPage(activeOrder: trackingOrder),
-      ProfilClientPage(currentUser: _currentUser),
+      HistoriqueCommandesPage(history: _allOrders, onRefresh: _loadData),
+      SuiviMapPage(
+        activeOrder: trackingOrder,
+        clientId: _currentUser?.id,
+        onRefresh: _loadData,
+      ),
+      ProfilClientPage(
+        currentUser: _currentUser,
+        onUserUpdated: (user) {
+          setState(() {
+            _currentUser = user;
+          });
+        },
+      ),
     ];
 
     return SafeArea(

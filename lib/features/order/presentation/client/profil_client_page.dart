@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smartfleet_frontend/features/auth/data/user_dto.dart';
 import 'package:smartfleet_frontend/features/auth/presentation/login_page.dart';
 import 'package:smartfleet_frontend/core/storage_service.dart';
+import 'package:smartfleet_frontend/features/auth/presentation/profile_edit_dialog.dart';
 
-class ProfilClientPage extends StatelessWidget {
+class ProfilClientPage extends ConsumerStatefulWidget {
   final UserDto? currentUser;
-  const ProfilClientPage({super.key, this.currentUser});
+  final ValueChanged<UserDto>? onUserUpdated;
 
+  const ProfilClientPage({super.key, this.currentUser, this.onUserUpdated});
+
+  @override
+  ConsumerState<ProfilClientPage> createState() => _ProfilClientPageState();
+}
+
+class _ProfilClientPageState extends ConsumerState<ProfilClientPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -56,19 +65,19 @@ class ProfilClientPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            currentUser?.name ?? 'Guest',
+                            widget.currentUser?.name ?? 'Guest',
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            currentUser?.email ?? '—',
+                            widget.currentUser?.email ?? '—',
                             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (currentUser?.phone != null && currentUser!.phone!.isNotEmpty) ...[
+                          if (widget.currentUser?.phone != null && widget.currentUser!.phone!.isNotEmpty) ...[
                             const SizedBox(height: 2),
                             Text(
-                              currentUser!.phone!,
+                              widget.currentUser!.phone!,
                               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                             ),
                           ],
@@ -83,7 +92,7 @@ class ProfilClientPage extends StatelessWidget {
                         border: Border.all(color: Colors.grey.shade200),
                       ),
                       child: Text(
-                        currentUser?.role.name ?? 'CLIENT',
+                        widget.currentUser?.role.name ?? 'CLIENT',
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
                       ),
                     ),
@@ -97,7 +106,20 @@ class ProfilClientPage extends StatelessWidget {
               _sectionLabel('Account Settings'),
               const SizedBox(height: 10),
               _settingsGroup([
-                _SettingsItem(icon: Icons.person_outline, label: 'Personal Information'),
+                _SettingsItem(
+                  icon: Icons.person_outline,
+                  label: 'Personal Information',
+                  onTap: () async {
+                    if (widget.currentUser == null) return;
+                    final updated = await showDialog<UserDto>(
+                      context: context,
+                      builder: (_) => ProfileEditDialog(currentUser: widget.currentUser!),
+                    );
+                    if (updated != null && mounted) {
+                      widget.onUserUpdated?.call(updated);
+                    }
+                  },
+                ),
                 _SettingsItem(icon: Icons.location_on_outlined, label: 'Saved Addresses'),
                 _SettingsItem(icon: Icons.payment_outlined, label: 'Payment Methods'),
               ]),
@@ -185,7 +207,7 @@ class ProfilClientPage extends StatelessWidget {
           return Column(
             children: [
               InkWell(
-                onTap: () {},
+                onTap: item.onTap,
                 borderRadius: BorderRadius.vertical(
                   top: index == 0 ? const Radius.circular(16) : Radius.zero,
                   bottom: isLast ? const Radius.circular(16) : Radius.zero,
@@ -227,5 +249,6 @@ class ProfilClientPage extends StatelessWidget {
 class _SettingsItem {
   final IconData icon;
   final String label;
-  const _SettingsItem({required this.icon, required this.label});
+  final VoidCallback? onTap;
+  const _SettingsItem({required this.icon, required this.label, this.onTap});
 }

@@ -424,6 +424,7 @@ class SubProgramDetailPage extends ConsumerStatefulWidget {
 
 class _SubProgramDetailPageState extends ConsumerState<SubProgramDetailPage> {
   bool _isStarting = false;
+  bool _isCalculating = false;
   late SubProgramDto _sp;
 
   @override
@@ -432,9 +433,46 @@ class _SubProgramDetailPageState extends ConsumerState<SubProgramDetailPage> {
     _sp = widget.sp;
   }
 
+  bool get _canCalculate =>
+      _sp.status == SubProgramStatus.assigned.value ||
+      _sp.status == SubProgramStatus.pending.value;
+
   bool get _canStart =>
       _sp.status == SubProgramStatus.assigned.value ||
       _sp.status == SubProgramStatus.pending.value;
+
+  Future<void> _calculateRoute() async {
+    setState(() => _isCalculating = true);
+    try {
+      final repo = ref.read(driverRepositoryProvider);
+      final updated = await repo.calculateRoute(_sp.id);
+      if (mounted) {
+        setState(() {
+          _sp = updated;
+          _isCalculating = false;
+        });
+        widget.onRefresh();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Route calculated successfully!'),
+            backgroundColor: Colors.black,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCalculating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   Future<void> _startRoute() async {
     setState(() => _isStarting = true);
@@ -649,7 +687,34 @@ class _SubProgramDetailPageState extends ConsumerState<SubProgramDetailPage> {
             const SizedBox(height: 32),
 
             // ── Action buttons ──
-            if (_canStart) ...[
+            if (_canCalculate) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: OutlinedButton.icon(
+                  onPressed: _isCalculating ? null : _calculateRoute,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.black,
+                    side: const BorderSide(color: Colors.black, width: 1.5),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  icon: _isCalculating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              color: Colors.black, strokeWidth: 2),
+                        )
+                      : const Icon(Icons.route_outlined, size: 20),
+                  label: Text(
+                    _isCalculating ? 'Calculating...' : 'Calculate Route',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 height: 54,

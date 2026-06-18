@@ -41,6 +41,19 @@ class AuthService {
       }
     }
 
+    /// PUT /auth/me — update the authenticated user's profile
+    Future<UserDto?> updateProfile(Map<String, dynamic> fields) async {
+      try {
+        var response = await _apiClient.put('/auth/me', fields);
+        if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
+          return UserDto.fromJson(response.data);
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
 }
 
 final authServiceProvider = Provider<AuthService>((ref) {

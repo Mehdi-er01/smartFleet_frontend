@@ -57,7 +57,7 @@ class OrderRepository {
   }
 
   Future<OrderDto> updateOrderStatus(int id, String status) async {
-    final res = await _apiClient.post('/orders/$id/status', {'status': status});
+    final res = await _apiClient.put('/orders/$id/status?status=$status', {});
     if (res.statusCode != null &&
         res.statusCode! >= 200 &&
         res.statusCode! < 300) {

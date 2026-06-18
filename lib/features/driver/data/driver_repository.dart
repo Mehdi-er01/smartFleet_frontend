@@ -79,6 +79,25 @@ class DriverRepository {
     }
   }
 
+  /// POST /subprograms/{id}/calculate-route
+  Future<SubProgramDto> calculateRoute(int subProgramId) async {
+    try {
+      var response = await _apiClient.post(
+        '/subprograms/$subProgramId/calculate-route',
+        {},
+      );
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        return SubProgramDto.fromJson(response.data);
+      } else {
+        throw Exception('Failed to calculate route');
+      }
+    } catch (e) {
+      throw Exception('Error calculating route: $e');
+    }
+  }
+
   Future<SubProgramDto> startSubProgram(int subProgramId) async {
     try {
       var response = await _apiClient.put(

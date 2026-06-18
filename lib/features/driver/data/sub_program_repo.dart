@@ -17,7 +17,7 @@ class SubProgramRepo {
   }
 
   Future<List<SubProgramDto>> getMySubPrograms() async {
-    final res = await _apiClient.get('/my-subprograms');
+    final res = await _apiClient.get('/subprograms/my-subprograms');
     if (res.statusCode != null &&
         res.statusCode! >= 200 &&
         res.statusCode! < 300) {
@@ -36,8 +36,9 @@ class SubProgramRepo {
     throw Exception('Failed to load active sub program');
   }
 
+  /// POST /subprograms/{id}/calculate-route
   Future<SubProgramDto> subProgramRouteCalculation(int id) async {
-    final res = await _apiClient.get('/subprograms/$id/calculate-route');
+    final res = await _apiClient.post('/subprograms/$id/calculate-route', {});
     if (res.statusCode != null &&
         res.statusCode! >= 200 &&
         res.statusCode! < 300) {

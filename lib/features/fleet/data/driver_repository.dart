@@ -38,7 +38,7 @@ class FleetDriverRepository {
   }
 
   Future<void> updateDriverLocation(DriverDto driver) async {
-    var res = await _apiClient.post(
+    var res = await _apiClient.put(
       '/drivers/${driver.id}/location',
       driver.toJson(),
     );

@@ -1,0 +1,17 @@
+# ====================================================
+# SmartFleet — Flutter Frontend Orchestration
+# ====================================================
+
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartfleet-frontend
+    restart: always
+    ports:
+      # Map container port 80 to host port 3000
+      # (matches CORS_ALLOWED_ORIGINS configured in backend)
+      - "3000:80"

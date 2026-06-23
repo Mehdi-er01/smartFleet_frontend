@@ -1,0 +1,6 @@
+address,weight,volume,latitude,longitude,description
+"12 Avenue Hassan II, Settat, Morocco",120.0,1.5,33.0016,-7.6183,"Livraison magasin Settat"
+"Boulevard Anfa, Casablanca, Morocco",250.0,3.2,33.5883,-7.6322,"Colis fragile pour bureau"
+"Hay Riad, Rabat, Morocco",80.0,0.8,34.0094,-6.8485,"Livraison express"
+"Route de l'Aeroport, Mohamed V, Casablanca",450.0,5.5,33.3675,-7.5898,"Grand volume"
+"Faculte des Sciences et Techniques, Settat",150.0,2.0,33.0028,-7.6192,"Equipement laboratoire FSTS"

@@ -62,8 +62,47 @@ class DispatchRepository {
       createdOrders.add(created);
     }
 
-    // Step 2: Create the program linking orders by ID
-    return createProgram(createdOrders, notes, plannedDate: plannedDate);
+    // Step 2: Create the program (empty or with notes)
+    final res = await _api.post('/programs', {
+      if (notes != null) 'notes': notes,
+      if (plannedDate != null) 'plannedDate': plannedDate,
+    });
+    final program = DeliveryProgramDto.fromJson(res.data);
+
+    // Step 3: Associate the orders with the program
+    if (createdOrders.isNotEmpty) {
+      final orderIds = createdOrders.map((o) => o.id).toList();
+      return associateOrdersToProgram(program.id, orderIds);
+    }
+
+    return program;
+  }
+
+  /// Associates orders to a program
+  /// Backend: POST /programs/{id}/orders → DeliveryProgramDTO
+  Future<DeliveryProgramDto> associateOrdersToProgram(int programId, List<int> orderIds) async {
+    final res = await _api.post('/programs/$programId/orders', orderIds);
+    return DeliveryProgramDto.fromJson(res.data);
+  }
+
+  /// Removes an order from a program
+  /// Backend: DELETE /programs/{id}/orders/{orderId} → DeliveryProgramDTO
+  Future<DeliveryProgramDto> removeOrderFromProgram(int programId, int orderId) async {
+    final res = await _api.delete('/programs/$programId/orders/$orderId');
+    return DeliveryProgramDto.fromJson(res.data);
+  }
+
+  /// Deletes a program
+  /// Backend: DELETE /programs/{id} → void
+  Future<void> deleteProgram(int programId) async {
+    await _api.delete('/programs/$programId');
+  }
+
+  /// Updates a program info
+  /// Backend: PUT /programs/{id} → DeliveryProgramDTO
+  Future<DeliveryProgramDto> updateProgram(int programId, Map<String, dynamic> data) async {
+    final res = await _api.put('/programs/$programId', data);
+    return DeliveryProgramDto.fromJson(res.data);
   }
 
   /// Optimizes a program (creates sub-programs/routes)
